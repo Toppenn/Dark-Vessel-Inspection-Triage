@@ -20,7 +20,7 @@
 - [ ] Cada uno crea cuenta en **build.nvidia.com** y saca su **API key** (`nvapi-...`).
 
 **P1**
-- [ ] Repo en GitHub. Al crearlo, "Add a license" → **Apache License 2.0**. Subir el esqueleto. Añadir a los otros 3.
+- [ ] Repo en GitHub. Al crearlo, "Add a license" → **MIT**. Subir el esqueleto. Añadir a los otros 3.
 
 **P3**
 - [ ] `pip install -r requirements.txt` → `python src/main.py --solo-cruce` (funciona sin key).
