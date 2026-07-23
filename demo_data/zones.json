@@ -1,0 +1,58 @@
+{
+  "_note": "SYNTHETIC DEMO DATA. The schema deliberately mirrors real marine protected area layers (Natura 2000 marine / WDPA) and officially published seasonal closures, so that swapping in real data only requires reimplementing src/data.py.",
+  "config": {
+    "ais_length_threshold_m": 15.0,
+    "_threshold_note": "Vessel length above which a fishing vessel is required to carry AIS in EU waters. VERIFY the exact figure and its legal basis before the pitch: this is the single most important number in the system, because it decides who is never flagged.",
+    "fishing_score_threshold": 0.7,
+    "study_area": "Gulf of Cadiz (demo)",
+    "output_language": "English"
+  },
+  "zones": [
+    {
+      "id": "MPA-01",
+      "name": "Bajo de los Corales Marine Protected Area",
+      "type": "marine_protected_area",
+      "designation": "Natura 2000 marine (demo)",
+      "prohibited_gear": ["bottom_trawl", "purse_seine"],
+      "closure": null,
+      "polygon": [
+        [36.60, -7.20],
+        [36.60, -6.90],
+        [36.85, -6.90],
+        [36.85, -7.20]
+      ]
+    },
+    {
+      "id": "CLS-02",
+      "name": "Northern Fishing Ground - seasonal spawning closure",
+      "type": "seasonal_closure",
+      "designation": "Seasonal closure (demo)",
+      "prohibited_gear": ["bottom_trawl"],
+      "closure": {
+        "start": "2026-06-01",
+        "end": "2026-09-30",
+        "reason": "spawning season"
+      },
+      "polygon": [
+        [36.90, -7.10],
+        [36.90, -6.75],
+        [37.15, -6.75],
+        [37.15, -7.10]
+      ]
+    },
+    {
+      "id": "RES-03",
+      "name": "Islote Sur Integral Reserve",
+      "type": "integral_reserve",
+      "designation": "Marine reserve of fishing interest (demo)",
+      "prohibited_gear": ["all"],
+      "closure": null,
+      "polygon": [
+        [36.40, -6.85],
+        [36.40, -6.65],
+        [36.55, -6.65],
+        [36.55, -6.85]
+      ]
+    }
+  ]
+}

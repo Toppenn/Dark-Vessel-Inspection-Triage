@@ -1,0 +1,87 @@
+{
+  "_note": "SYNTHETIC DETECTIONS. The schema deliberately mirrors the Global Fishing Watch dataset 'Vessel detections from Sentinel-1 SAR': each radar detection carries position, estimated length, whether it was matched to an AIS broadcast, and a fishing-behaviour score.",
+  "scene": {
+    "source": "Sentinel-1 (demo)",
+    "mode": "IW / VV-VH",
+    "timestamp": "2026-07-18T06:12:00Z",
+    "area": "Gulf of Cadiz (demo)"
+  },
+  "detections": [
+    {
+      "id": "D-001", "lat": 36.72, "lon": -7.05,
+      "estimated_length_m": 34.0, "ais_matched": false,
+      "fishing_score": 0.91, "speed_kn": 3.1, "heading": 218,
+      "likely_gear": "bottom_trawl"
+    },
+    {
+      "id": "D-002", "lat": 36.71, "lon": -7.02,
+      "estimated_length_m": 28.5, "ais_matched": false,
+      "fishing_score": 0.86, "speed_kn": 2.8, "heading": 225,
+      "likely_gear": "bottom_trawl"
+    },
+    {
+      "id": "D-003", "lat": 36.78, "lon": -6.95,
+      "estimated_length_m": 41.0, "ais_matched": true,
+      "mmsi": "224######", "vessel_name": "DEMO VESSEL A",
+      "flag": "ESP", "fishing_score": 0.34, "speed_kn": 9.4, "heading": 90,
+      "likely_gear": "in_transit"
+    },
+    {
+      "id": "D-004", "lat": 36.47, "lon": -6.74,
+      "estimated_length_m": 22.0, "ais_matched": false,
+      "fishing_score": 0.88, "speed_kn": 2.2, "heading": 40,
+      "likely_gear": "purse_seine"
+    },
+    {
+      "id": "D-005", "lat": 36.49, "lon": -6.78,
+      "estimated_length_m": 9.5, "ais_matched": false,
+      "fishing_score": 0.72, "speed_kn": 3.0, "heading": 130,
+      "likely_gear": "small_scale"
+    },
+    {
+      "id": "D-006", "lat": 37.02, "lon": -6.92,
+      "estimated_length_m": 31.0, "ais_matched": true,
+      "mmsi": "225######", "vessel_name": "DEMO VESSEL B",
+      "flag": "ESP", "fishing_score": 0.89, "speed_kn": 2.6, "heading": 310,
+      "likely_gear": "bottom_trawl"
+    },
+    {
+      "id": "D-007", "lat": 37.05, "lon": -6.80,
+      "estimated_length_m": 12.0, "ais_matched": false,
+      "fishing_score": 0.55, "speed_kn": 4.1, "heading": 275,
+      "likely_gear": "small_scale"
+    },
+    {
+      "id": "D-008", "lat": 36.30, "lon": -7.40,
+      "estimated_length_m": 55.0, "ais_matched": false,
+      "fishing_score": 0.93, "speed_kn": 2.4, "heading": 175,
+      "likely_gear": "bottom_trawl"
+    },
+    {
+      "id": "D-009", "lat": 36.65, "lon": -7.12,
+      "estimated_length_m": 18.0, "ais_matched": true,
+      "mmsi": "226######", "vessel_name": "DEMO VESSEL C",
+      "flag": "PRT", "fishing_score": 0.28, "speed_kn": 11.0, "heading": 15,
+      "likely_gear": "in_transit"
+    },
+    {
+      "id": "D-010", "lat": 36.44, "lon": -6.70,
+      "estimated_length_m": 26.5, "ais_matched": false,
+      "fishing_score": 0.95, "speed_kn": 1.9, "heading": 60,
+      "likely_gear": "bottom_trawl"
+    },
+    {
+      "id": "D-011", "lat": 36.95, "lon": -7.00,
+      "estimated_length_m": 8.0, "ais_matched": false,
+      "fishing_score": 0.41, "speed_kn": 5.5, "heading": 200,
+      "likely_gear": "small_scale"
+    },
+    {
+      "id": "D-012", "lat": 36.20, "lon": -6.50,
+      "estimated_length_m": 47.0, "ais_matched": true,
+      "mmsi": "227######", "vessel_name": "DEMO VESSEL D",
+      "flag": "MAR", "fishing_score": 0.90, "speed_kn": 2.7, "heading": 88,
+      "likely_gear": "purse_seine"
+    }
+  ]
+}
