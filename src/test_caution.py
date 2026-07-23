@@ -26,8 +26,8 @@ def check(condition: bool, description: str) -> bool:
     return bool(condition)
 
 
-def det(det_id, lat, lon, length, ais_matched=False, fishing=0.0,
-        gear="unknown", **extra) -> dict:
+def det(det_id, lat, lon, length, ais_matched: "bool | None" = False,
+        fishing=0.0, gear="unknown", **extra) -> dict:
     d = {"id": det_id, "lat": lat, "lon": lon, "estimated_length_m": length,
          "fishing_score": fishing, "likely_gear": gear}
     if ais_matched is not None:  # None = omit the field entirely
@@ -413,6 +413,105 @@ def main() -> int:
         not validate.validate_prioritisation(dossier, good_prioritisation),
         "passes a clean prioritisation that mentions D-005 (a legitimate "
         "candidate) without false alarms"))
+
+    print("\nNarrative priority claims")
+
+    # An analyst run stated "three high-priority vessels (D-010, D-004, D-005)"
+    # while D-005 was medium. The claim is only checked inside a parenthesised
+    # list, so looser phrasings must not produce false alarms.
+    high = next(r for r in dossier["records"]
+                if r["classification"] == "high_priority")
+    medium = next(r for r in dossier["records"]
+                  if r["classification"] == "medium_priority")
+
+    misattributed = {
+        "prioritised_candidates": [],
+        "observed_pattern": (f"three high-priority vessels ({high['id']}, "
+                             f"{medium['id']}) cluster near the base"),
+        "overall_recommendation": "",
+        "excluded_by_caution": [],
+        "limitations": [],
+    }
+    flagged = validate.validate_prioritisation(dossier, misattributed)
+    results.append(check(
+        any(medium["id"] in m and "narrative lists it among" in m
+            for _, _, m in flagged),
+        f"flags {medium['id']} ({medium['classification']}) claimed as high-priority"))
+
+    faithful = {
+        "prioritised_candidates": [],
+        "observed_pattern": (f"high-priority vessels ({high['id']}) lie nearest "
+                             f"the base; inspect {medium['id']} as follow-up"),
+        "overall_recommendation": "",
+        "excluded_by_caution": [],
+        "limitations": [],
+    }
+    results.append(check(
+        not [i for i in validate.validate_prioritisation(dossier, faithful)
+             if "narrative lists it among" in i[2]],
+        "does not flag a correct claim that merely mentions a medium record nearby"))
+
+    print("\nRegressions caught in real runs")
+
+    high = next(r for r in dossier["records"]
+                if r["classification"] == "high_priority")
+    medium = next(r for r in dossier["records"]
+                  if r["classification"] == "medium_priority")
+
+    def brief_for(record, **overrides):
+        base = {
+            "id": record["id"],
+            "priority": record["classification"].replace("_priority", ""),
+            "position": (f"{record['position']['lat']}, "
+                         f"{record['position']['lon']}"),
+            "indicators": [i["reason"] for i in record["potential_indicators"]],
+            "regulation_concerned": record["potential_indicators"][0]["reason"][:50],
+            "suggested_action": "Board and verify gear and documentation",
+            "caveat": "The gear inference may be wrong",
+        }
+        base.update(overrides)
+        return base
+
+    # An empty regulation string slipped through: the earlier rule only looked
+    # for the words "none identified", so "" matched nothing.
+    empty_reg = {
+        "executive_summary": "Candidates identified.",
+        "inspection_briefs": [brief_for(high, regulation_concerned=""),
+                              brief_for(medium)],
+        "methodological_note": "n/a", "human_decision_required": "n/a",
+    }
+    results.append(check(
+        any("no regulation is named" in m
+            for _, _, m in validate.validate_report(dossier, empty_reg)),
+        "flags an empty regulation field, not just the words 'none identified'"))
+
+    # A writer run reduced the action to a distance.
+    distance_action = {
+        "executive_summary": "Candidates identified.",
+        "inspection_briefs": [brief_for(high, suggested_action="40.77 km from base"),
+                              brief_for(medium)],
+        "methodological_note": "n/a", "human_decision_required": "n/a",
+    }
+    results.append(check(
+        any("states context rather than an instruction" in m
+            for _, _, m in validate.validate_report(dossier, distance_action)),
+        "flags a suggested action that is only a distance"))
+
+    # The misattribution also occurs without parentheses.
+    bare_claim = {
+        "prioritised_candidates": [],
+        "observed_pattern": (f"High-priority detections {high['id']}, "
+                             f"{medium['id']} form a tight cluster"),
+        "overall_recommendation": "",
+        "excluded_by_caution": [], "limitations": [],
+    }
+    flagged = validate.validate_prioritisation(dossier, bare_claim)
+    results.append(check(
+        any(medium["id"] in m and "narrative lists it among" in m
+            for _, _, m in flagged)
+        and not any(high["id"] in m and "narrative lists it among" in m
+                    for _, _, m in flagged),
+        "flags an unparenthesised priority claim, and only the wrong id"))
 
     passed = sum(results)
     print(f"\n{passed}/{len(results)} checks passed\n")

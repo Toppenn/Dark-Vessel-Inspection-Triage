@@ -30,107 +30,72 @@ system:
 1. **Cross-references** every detection against AIS matching, marine protected area
    boundaries, seasonal closures and permitted fishing gear.
 2. **Scores** each detection with a fully itemised breakdown — every point awarded has a
-   stated reason, and no point is ever awarded without a concrete indicator. No black box.
-3. **Sequences** the candidates for a patrol: priority first, then distance from the
-   patrol base, so the ranking is directly actionable.
-4. **Reasons** over the scene as a whole: ranks inspection candidates, identifies spatial
-   clustering, and declares what the analysis cannot know.
+   stated reason. No black box.
+3. **Sequences** the resulting candidates against a patrol base and a reachable radius,
+   because a target that scores highly 200 km away is not the next inspection.
+4. **Reasons** over the scene as a whole: ranks candidates, identifies spatial clustering,
+   and declares what the analysis cannot know.
 5. **Drafts inspection briefs** stating the indicators, the regulation concerned, the
-   suggested action, and — deliberately — the innocent explanation that could account for
-   the indicator.
+   suggested action, and the innocent explanation that could account for the indicator.
+6. **Validates its own output** against the factual dossier, and refuses to issue a report
+   that fails.
 
 ---
 
 ## Duty of caution
 
-**A vessel not broadcasting AIS is not automatically an offender.** Vessels at or below
-the legal length threshold are not required to broadcast at all. For those vessels the
-system suppresses the **AIS indicator** — and only that indicator. Every other indicator
-(prohibited gear, an active seasonal closure) is assessed exactly as for any other
-vessel. A small dark vessel apparently fishing inside an integral reserve is still an
-inspection candidate, on the strength of its zone indicators alone; a small dark vessel
-with nothing else against it scores zero and is never prioritised. Suppressing the
-vessel instead of the indicator would be the opposite failure: under-reporting.
+**Not broadcasting AIS is not, by itself, evidence of anything.** Getting this right in
+both directions is the core of the system.
 
-This is not a technical footnote. It is the design decision that separates a legitimate
-triage tool from a machine that generates suspicion without basis. Throughout, the system
-speaks of *indicators justifying inspection*, never of *offences*. A human officer always
-decides.
+### The threshold suppresses one indicator, not the vessel
 
-The threshold is not arbitrary: Article 10(1) and (2), Council Regulation (EC)
-No 1224/2009, as amended by Regulation (EU) 2023/2842, is the legal basis used throughout.
-Article 10(1) requires Union fishing vessels **exceeding** 15 m length overall to be
-fitted with and maintain in operation an AIS. Three consequences are implemented
-literally:
+Vessels below the legal length threshold are not required to broadcast at all. For those,
+the system **suppresses the AIS indicator and its points** — and nothing else. Every other
+indicator that vessel may have raised stands, and it can still become an inspection
+candidate on that basis.
 
-- **"Exceeding" is strict.** A vessel of exactly 15.0 m is not covered, and the system
-  never claims that 15.0 exceeds 15.0.
-- **The obligation binds Union fishing vessels** — and a dark vessel's flag state is
-  unknown by definition. The AIS indicator is therefore phrased conditionally: *"if this
-  is a Union fishing vessel exceeding 15 m LOA, the AIS carriage and operation
-  requirement is potentially concerned (Art. 10(1))"*. Every record carries a
-  `jurisdiction` field: the flag for AIS-matched vessels, `"unknown"` for the rest.
-- **A dark vessel may be lawfully dark.** Article 10(2) (introduced by the 2023 revision)
-  lets the master switch off AIS where crew safety or security is imminently at risk —
-  and requires the switch-off and its reason to be notified. The brief's caveat is
-  therefore a verifiable action, not a shrug: *check whether an AIS switch-off
-  notification was filed for this time window (Art. 10(2))*. The exact paragraph
-  numbering should be confirmed against the consolidated text of the amended regulation.
+This distinction matters more than it looks. An earlier version of this system classified
+sub-threshold vessels as "non-assessable" and zeroed their entire record. The effect was
+that a 9 m vessel apparently fishing inside an integral reserve disappeared from the output
+**because it was dark**, while the same vessel doing the same thing with its transponder on
+was flagged. That is an incentive to switch the transponder off. In the demo scene, D-005 is
+exactly that case: it is below the threshold, its AIS indicator is suppressed and explained,
+and it is still a medium-priority candidate because of a zone indicator.
 
-Additionally, since January 2026 fishing vessels of 12 m and over must carry an
-operational VMS. For a small dark vessel at or above that length the correct statement is
-not "unobservable" but: *absence of AIS is not an indicator; the appropriate cross-check
-is VMS, which the authority already holds*. The engine says exactly that in the record's
-AIS note.
+### The legal basis, and its limits
 
-The threshold, the length-uncertainty band and the VMS threshold are configurable
-parameters in `demo_data/zones.json`, so they can be set to the correct legal values per
-jurisdiction and audited independently of the code.
+The threshold is not arbitrary. Article 10(1) of Council Regulation (EC) No 1224/2009, as
+amended by Regulation (EU) 2023/2842, requires Union fishing vessels exceeding 15 m length
+overall to carry and maintain an operational AIS. Three consequences are built into the
+engine:
 
-The duty runs in both directions. The system must not under-report either: a vessel above
-the threshold that is not broadcasting is potentially in breach of the carriage
-requirement itself, wherever it is, and that provision is named explicitly rather than
-reported as "no regulation concerned". The validator enforces the same symmetry on the
-model: a high-priority record without a brief blocks the report, just as an invented
-accusation does.
+- **"Exceeding" means strictly greater.** A vessel of exactly 15.0 m is not covered.
+- **The obligation is on *Union* vessels**, and a dark vessel's flag State is unknown by
+  definition. The indicator is therefore phrased conditionally — *"if this is a Union
+  fishing vessel exceeding 15 m LOA, the carriage requirement is potentially concerned"* —
+  and the record carries `jurisdiction: unknown`.
+- **Article 10(2) permits a lawful switch-off** where crew safety or security is at
+  imminent risk. A dark vessel may be lawfully dark. Under the revised regime the master
+  must notify the switch-off, so the brief's caveat points to a check the authority can
+  actually perform rather than an untestable excuse.
 
-This property is tested, not merely documented — see `src/test_caution.py`.
+Below the threshold the correct statement is not "unobservable" but "the appropriate
+cross-check is VMS": vessels of 12 m and over must carry an operational VMS, a track the
+authority already holds.
 
----
+*The precise paragraph numbering should be confirmed against the consolidated text before
+operational use.*
 
-## Scoring
+### The measurement is estimated, and the threshold sits on the sensor floor
 
-Scoring obeys one hard invariant, enforced by test: **score > 0 if and only if the record
-has at least one concrete indicator.** Presence inside a regulated zone scores nothing by
-itself — only a concrete violation does (prohibited gear, apparent fishing during an
-active closure, or the carriage requirement potentially engaged). There is no
-"a provision is concerned" bonus: that was double counting, and it is gone.
+`estimated_length_m` is inferred from radar backscatter, not measured, and the 15 m legal
+threshold sits close to the detection floor of Sentinel-1 SAR. In that band the estimation
+error is comparable to the distance to the threshold, so a firm/inconclusive/not-applicable
+three-state rule applies, governed by a configurable `length_sigma_m`. **The sigma currently
+in the configuration is a placeholder**; calibrating it against the published detection
+literature is an immediate task, not a finished one.
 
-The score is an internal ordering aid. It is presented **ordinally** — high or medium
-priority — and in prose as *"N independent indicators concur"*, never as a headline
-number. Weights live in `demo_data/zones.json` (`score_weights`), are transparent, and
-are not yet calibrated against enforcement outcomes: they order candidates, they are not
-probabilities of infringement.
-
-Two honesty rules shape what counts as an indicator at all:
-
-- **Length uncertainty.** The radar length estimate carries sensor error and the legal
-  threshold sits near the detection floor. AIS applicability is therefore three-state:
-  firmly above (`length − k·σ > threshold`, full indicator), near threshold
-  (`length + k·σ > threshold`, a degraded indicator explicitly labelled *"length near
-  threshold, inconclusive"*, worth fewer points), and not applicable (AIS indicator
-  suppressed). `length_sigma_m` is a configurable placeholder pending calibration
-  against Paolo et al. 2024 — a known limitation.
-- **Source honesty.** The fishing-behaviour score in the upstream data comes from a
-  contextual classifier, not from observed movement, so it is labelled
-  *"contextual classifier indicates likely fishing activity (non-observational)"* and
-  only ever corroborates an existing indicator. Likewise, for an unmatched detection the
-  inferred gear class is enrichment, not observation: in a zone that prohibits specific
-  gear it is reported as **context, not an indicator** (for AIS-matched vessels the gear
-  class comes from the fleet registry and remains a valid indicator).
-
-Only high- and medium-priority records are inspection candidates; a vessel without
-indicators is not a candidate and is never presented to the agents as one.
+These properties are tested, not merely documented — see `src/test_caution.py`.
 
 ---
 
@@ -138,28 +103,52 @@ indicators is not a candidate and is never presented to the agents as one.
 
 ```
 GFW / Sentinel-1 detections ─┐
-Marine protected areas       ├─> deterministic ──> analyst agent ──> writer agent ──> briefs
-Seasonal closures            │   cross-reference     (Nemotron)        (Nemotron)
-Gear restrictions           ─┘   analysis.py              │                │
-                                 auditable, no LLM        └── validated ───┘
-                                                              in code, blocking
+Marine protected areas       ├─> deterministic ──> analyst ──> writer ──> validator ──> briefs
+Seasonal closures            │   cross-reference   (Nemotron)  (Nemotron)  analysis.py
+Gear restrictions           ─┘   analysis.py                               validate.py
+Patrol base                      auditable, no LLM                         auditable, no LLM
 ```
 
 **Positions, geometry and scores are computed deterministically and are never generated by
-the model.** In an enforcement file the figures must be reproducible and auditable. The
-open models do what they are genuinely good at: interpreting context, prioritising, and
-writing for a human reader.
+the model** — and that claim is enforced, not asserted: the validator compares every
+position in a brief against the dossier. In an enforcement file the figures must be
+reproducible and auditable. The open models do what they are genuinely good at: interpreting
+context, prioritising, and writing for a human reader.
 
 **Why open models matter here.** Because the weights are open, the system can be deployed
 inside the authority's own environment — operational data never leaves it — and its
 reasoning can be inspected and audited. Both are requirements when an output feeds an
-enforcement decision. A closed API behind a vendor boundary cannot offer either.
+enforcement decision. A closed API behind a vendor boundary offers neither.
 
 Briefs are written in the working language of the authority that will act on them, set by
-`output_language` in the regulatory layer. Inspectors should not have to read enforcement
-paperwork in a foreign language, and an open model running locally can serve languages a
-vendor API may not prioritise. The validator's patterns cover Spanish as well as English
-for the same reason.
+`output_language`. Inspectors should not have to read enforcement paperwork in a foreign
+language, and an open model running locally can serve languages a vendor API may not
+prioritise. The validator's guardrail patterns are multilingual for the same reason.
+
+---
+
+## Output validation
+
+Prompting does not guarantee the guarantees. Models follow instructions approximately, and
+here an approximate answer can attach a breach to a compliant vessel. So the model's output
+is checked against the factual dossier in code, before a human sees it. **If a blocking
+issue is found the briefs are not printed and the process exits non-zero.**
+
+The validator checks, for both the analyst and the writer:
+
+| Check | Severity |
+|---|---|
+| AIS carriage requirement invoked against a broadcasting vessel — in the regulation, the indicators, or the suggested action | blocker |
+| A brief position that does not match the dossier | blocker |
+| A high-priority record with no brief (under-reporting) | blocker |
+| A vessel with its AIS indicator suppressed and no other indicators, reintroduced in the narrative | blocker |
+| A prioritised id that does not exist in the dossier, or is not a candidate | blocker |
+| An indicator written as a category label ("ais", "zone") rather than a statement | blocker |
+| A record with indicators but no regulation named, including an empty field | warning |
+| A suggested action that restates context ("40.77 km from base") instead of instructing | warning |
+| A medium-priority record with no brief | warning |
+
+Each rule exists because a model produced that failure in a real run.
 
 ---
 
@@ -167,12 +156,9 @@ for the same reason.
 
 ### 1. Deterministic cross-reference
 
-`python src/main.py --cross-reference-only` — verbatim program output:
+`python src/main.py --cross-reference-only`
 
 ```
-========================================================================
-FACTUAL DOSSIER - Gulf of Cadiz (demo) - scene 2026-07-18T06:12:00Z
-========================================================================
 Detections analysed: 12
 AIS carriage threshold applied: 15.0 m (length uncertainty +/-2.0 m)
 Active closure: Northern Fishing Ground - seasonal spawning closure (spawning season)
@@ -184,64 +170,40 @@ Classification summary:
   no_indicators      3
   ais_not_applicable 2
 
---- INSPECTION CANDIDATES ---
-
-  D-004  -> HIGH_PRIORITY | 2 independent indicator(s) concur | 40.77 km from base
-    Pos 36.47, -6.74 | length 22.0 m | AIS: unmatched (dark) | likely gear: purse_seine
-    Zone: Islote Sur Integral Reserve (integral_reserve)
-    Indicator: radar-estimated length 22.0 m is above the 15.0 m threshold beyond sensor uncertainty and no AIS broadcast was matched; if this is a Union fishing vessel exceeding 15.0 m LOA, the AIS carriage and operation requirement is potentially concerned (Article 10(1), Council Regulation (EC) No 1224/2009, as amended by Regulation (EU) 2023/2842)
-    Indicator: apparent fishing activity inside integral_reserve 'Islote Sur Integral Reserve' where all fishing gear is prohibited (activity per contextual classifier, non-observational)
-      +40  no AIS broadcast matched while the carriage requirement is potentially engaged (length firmly above threshold)
-      +30  apparent fishing where all gear is prohibited (RES-03)
-      +10  contextual classifier indicates likely fishing activity (non-observational) - corroboration only
-
   D-010  -> HIGH_PRIORITY | 2 independent indicator(s) concur | 38.0 km from base
     Pos 36.44, -6.7 | length 26.5 m | AIS: unmatched (dark) | likely gear: bottom_trawl
     Zone: Islote Sur Integral Reserve (integral_reserve)
-    Indicator: radar-estimated length 26.5 m is above the 15.0 m threshold beyond sensor uncertainty and no AIS broadcast was matched; if this is a Union fishing vessel exceeding 15.0 m LOA, the AIS carriage and operation requirement is potentially concerned (Article 10(1), Council Regulation (EC) No 1224/2009, as amended by Regulation (EU) 2023/2842)
-    Indicator: apparent fishing activity inside integral_reserve 'Islote Sur Integral Reserve' where all fishing gear is prohibited (activity per contextual classifier, non-observational)
-      +40  no AIS broadcast matched while the carriage requirement is potentially engaged (length firmly above threshold)
+    Indicator: radar-estimated length 26.5 m is above the 15.0 m threshold beyond sensor
+               uncertainty and no AIS broadcast was matched; if this is a Union fishing
+               vessel exceeding 15.0 m LOA, the AIS carriage and operation requirement is
+               potentially concerned (Article 10(1), Council Regulation (EC) No 1224/2009,
+               as amended by Regulation (EU) 2023/2842)
+    Indicator: apparent fishing activity inside integral_reserve 'Islote Sur Integral
+               Reserve' where all fishing gear is prohibited (activity per contextual
+               classifier, non-observational)
+      +40  no AIS broadcast matched while the carriage requirement is potentially engaged
       +30  apparent fishing where all gear is prohibited (RES-03)
-      +10  contextual classifier indicates likely fishing activity (non-observational) - corroboration only
-
-  D-006 [DEMO VESSEL B / ESP]  -> HIGH_PRIORITY | 2 independent indicator(s) concur | 78.21 km from base
-    Pos 37.02, -6.92 | length 31.0 m | AIS: matched | likely gear: bottom_trawl
-    Zone: Northern Fishing Ground - seasonal spawning closure (seasonal_closure)
-    Indicator: gear 'bottom_trawl' (fleet registry) prohibited in seasonal_closure 'Northern Fishing Ground - seasonal spawning closure'
-    Indicator: contextual classifier indicates likely fishing activity (non-observational) during active closure (spawning season) in 'Northern Fishing Ground - seasonal spawning closure'
-      +30  registry gear prohibited in zone (CLS-02)
-      +30  likely fishing during active closure (CLS-02)
-      +10  contextual classifier indicates likely fishing activity (non-observational) - corroboration only
+      +10  contextual classifier indicates likely fishing activity - corroboration only
 
   D-001  -> MEDIUM_PRIORITY | 1 independent indicator(s) concur | 71.04 km from base
     Pos 36.72, -7.05 | length 34.0 m | AIS: unmatched (dark) | likely gear: bottom_trawl
     Zone: Bajo de los Corales Marine Protected Area (marine_protected_area)
-    Indicator: radar-estimated length 34.0 m is above the 15.0 m threshold beyond sensor uncertainty and no AIS broadcast was matched; if this is a Union fishing vessel exceeding 15.0 m LOA, the AIS carriage and operation requirement is potentially concerned (Article 10(1), Council Regulation (EC) No 1224/2009, as amended by Regulation (EU) 2023/2842)
-    Context (not an indicator): radar-inferred gear class 'bottom_trawl' would be prohibited in marine_protected_area 'Bajo de los Corales Marine Protected Area', but gear inference for an unmatched detection is enrichment, not observation - context only, to be verified on inspection
-      +40  no AIS broadcast matched while the carriage requirement is potentially engaged (length firmly above threshold)
-      +10  contextual classifier indicates likely fishing activity (non-observational) - corroboration only
-
-  D-002  -> MEDIUM_PRIORITY | 1 independent indicator(s) concur | 68.15 km from base
-    Pos 36.71, -7.02 | length 28.5 m | AIS: unmatched (dark) | likely gear: bottom_trawl
-    Zone: Bajo de los Corales Marine Protected Area (marine_protected_area)
-    Indicator: radar-estimated length 28.5 m is above the 15.0 m threshold beyond sensor uncertainty and no AIS broadcast was matched; if this is a Union fishing vessel exceeding 15.0 m LOA, the AIS carriage and operation requirement is potentially concerned (Article 10(1), Council Regulation (EC) No 1224/2009, as amended by Regulation (EU) 2023/2842)
-    Context (not an indicator): radar-inferred gear class 'bottom_trawl' would be prohibited in marine_protected_area 'Bajo de los Corales Marine Protected Area', but gear inference for an unmatched detection is enrichment, not observation - context only, to be verified on inspection
-      +40  no AIS broadcast matched while the carriage requirement is potentially engaged (length firmly above threshold)
-      +10  contextual classifier indicates likely fishing activity (non-observational) - corroboration only
-
-  D-008  -> MEDIUM_PRIORITY | 1 independent indicator(s) concur | 102.56 km from base
-    Pos 36.3, -7.4 | length 55.0 m | AIS: unmatched (dark) | likely gear: bottom_trawl
-    Indicator: radar-estimated length 55.0 m is above the 15.0 m threshold beyond sensor uncertainty and no AIS broadcast was matched; if this is a Union fishing vessel exceeding 15.0 m LOA, the AIS carriage and operation requirement is potentially concerned (Article 10(1), Council Regulation (EC) No 1224/2009, as amended by Regulation (EU) 2023/2842)
-      +40  no AIS broadcast matched while the carriage requirement is potentially engaged (length firmly above threshold)
-      +10  contextual classifier indicates likely fishing activity (non-observational) - corroboration only
+    Indicator: radar-estimated length 34.0 m is above the 15.0 m threshold beyond sensor
+               uncertainty and no AIS broadcast was matched; ...
+    Context (not an indicator): radar-inferred gear class 'bottom_trawl' would be
+               prohibited in marine_protected_area 'Bajo de los Corales Marine Protected
+               Area', but gear inference for an unmatched detection is enrichment, not
+               observation - context only, to be verified on inspection
 
   D-005  -> MEDIUM_PRIORITY | 1 independent indicator(s) concur | 44.02 km from base
     Pos 36.49, -6.78 | length 9.5 m | AIS: unmatched (dark) | likely gear: small_scale
     Zone: Islote Sur Integral Reserve (integral_reserve)
-    Indicator: apparent fishing activity inside integral_reserve 'Islote Sur Integral Reserve' where all fishing gear is prohibited (activity per contextual classifier, non-observational)
-    AIS note: Below the AIS carriage threshold: absence of an AIS broadcast is not an indicator. Other indicators, if any, remain.
+    Indicator: apparent fishing activity inside integral_reserve 'Islote Sur Integral
+               Reserve' where all fishing gear is prohibited
+    AIS note: Below the AIS carriage threshold: absence of an AIS broadcast is not an
+              indicator. Other indicators, if any, remain.
       +30  apparent fishing where all gear is prohibited (RES-03)
-      +10  contextual classifier indicates likely fishing activity (non-observational) - corroboration only
+      +10  contextual classifier indicates likely fishing activity - corroboration only
 
 --- PATROL SEQUENCE (priority, then distance from base) ---
   D-010  high_priority      38.0 km  (36.44, -6.7)
@@ -253,79 +215,78 @@ Classification summary:
   D-008  medium_priority  102.56 km  (36.3, -7.4)
 
 --- AIS INDICATOR SUPPRESSED (duty of caution) ---
-  D-005 (medium_priority): Below the AIS carriage threshold: absence of an AIS broadcast is not an indicator. Other indicators, if any, remain.
-  D-007 (ais_not_applicable): Below the AIS carriage threshold: absence of an AIS broadcast is not an indicator. Other indicators, if any, remain. The appropriate cross-check is VMS: vessels of 12.0 m and over must carry an operational VMS (since January 2026), and the authority already holds that track.
-  D-011 (ais_not_applicable): Below the AIS carriage threshold: absence of an AIS broadcast is not an indicator. Other indicators, if any, remain.
+  D-005 (medium_priority): Below the AIS carriage threshold: absence of an AIS broadcast
+        is not an indicator. Other indicators, if any, remain.
+  D-007 (ais_not_applicable): ... The appropriate cross-check is VMS: vessels of 12.0 m
+        and over must carry an operational VMS (since January 2026), and the authority
+        already holds that track.
 ```
 
-Read D-005 closely, because it is the whole design in one record: a 9.5 m dark vessel.
-Its AIS indicator is suppressed — below the threshold, not broadcasting breaches nothing —
-but it is apparently fishing inside an integral reserve, so it is a **medium-priority
-candidate on the zone indicator alone**, with the suppression stated in the record.
-D-007 and D-011 are equally small and equally dark but have no zone violation: they score
-zero and are never prioritised. And D-008 is in open water, outside every protected zone,
-yet the provision it may breach is named — conditionally, because its flag is unknown.
-Neither over-reporting nor under-reporting.
+Three things to read here. **D-005** is below the threshold, has its AIS indicator suppressed
+and explained, and is still a candidate on a zone indicator — the duty of caution removes one
+piece of evidence, not the vessel. **D-001** shows the gear class demoted to *context, not an
+indicator*: gear cannot be inferred from a radar return on an unmatched detection, so it does
+not score. And the patrol sequence reorders the list by what a patrol vessel can actually
+reach.
 
 ### 2. Analyst agent
 
-`python src/main.py` — representative output (agent wording varies between runs; the
-deterministic figures it may cite come from the dossier above, and its output is
-validated in code before it is shown):
+`python src/main.py`
 
 ```
-AIS not applicable (indicator suppressed):
-  - D-005: below the 15 m carriage threshold, darkness is not an indicator;
-           prioritised solely on the integral reserve zone indicator
-  - D-007, D-011: below the carriage threshold with no zone violation; excluded
+  1. D-010 [ais_and_zone, confidence high]
+     Radar-estimated length 26.5 m exceeds the 15 m AIS carriage threshold with no AIS
+     broadcast matched, and contextual classifier indicates apparent fishing activity
+     inside the Islote Sur Integral Reserve where all gear is prohibited.
+  4. D-005 [zone, confidence medium]
+     Below the AIS carriage threshold (length 9.5 m), so absence of AIS is not an
+     indicator; apparent fishing activity is indicated inside the Islote Sur Integral
+     Reserve where all gear is prohibited.
+  6. D-001 [ais, confidence medium]
+     Radar-estimated length 34.0 m exceeds the 15 m AIS carriage threshold with no AIS
+     broadcast matched; radar-inferred bottom_trawl would be prohibited in the Bajo de
+     los Corales Marine Protected Area (context only).
 
-Observed pattern: The three high-priority candidates concentrate in two regulated
-areas: the Islote Sur Integral Reserve (D-004, D-010) and the active seasonal
-closure CLS-02 (D-006, AIS-matched). Two dark medium-priority vessels (D-001,
-D-002) sit inside MPA-01, while D-008 is dark in open water.
+Observed pattern: High-priority detections (D-010, D-004, D-006) form a spatial cluster
+near the Islote Sur Integral Reserve. Medium-priority detections (D-001, D-002, D-005,
+D-008) show a second cluster near the Bajo de los Corales Marine Protected Area.
 
 Stated limitations:
-  - The fishing-activity signal is a contextual classifier, not observed
-    behaviour; gear inference for unmatched detections is enrichment.
-  - A lawful AIS switch-off under Article 10(2) cannot be ruled out for dark
-    vessels; whether a notification was filed must be checked.
-  - Flag state of unmatched detections is unknown, so the carriage requirement
-    can only be conditionally engaged.
-  - This is a single radar snapshot; no temporal persistence is available.
+  - Cannot verify actual gear type or fishing activity without visual boarding.
+  - Cannot confirm whether AIS switch-off notifications were filed for dark vessels.
+  - Flag State and true vessel identity remain unknown for unmatched detections.
+  - Analysis relies on radar estimates and contextual classifiers, which are indicative
+    but not conclusive.
 ```
 
-The analyst's output is then checked in code (`validate_prioritisation`): ids that are
-not inspection candidates, ids that do not exist, or a silently-suppressed vessel
-reintroduced into the narrative all **block the run** before the writer ever starts.
+The agent reproduces the suppression rule in its own words and states, unprompted, the four
+things it cannot know — including the lawful derogation that could explain the very darkness
+it is reporting.
 
-### 3. Writer agent — inspection briefs
-
-Representative output (same caveat as above; structure and guarantees are enforced by
-`validate.py`):
+### 3. Writer agent and validation
 
 ```
-  [HIGH] D-010 - 36.44, -6.7
-    - no AIS broadcast matched, length firmly above the carriage threshold
-    - apparent fishing activity inside an integral reserve where all gear is
-      prohibited
-    Regulation: if this is a Union fishing vessel exceeding 15 m LOA,
-                Article 10(1), Council Regulation (EC) No 1224/2009, as amended
-                by Regulation (EU) 2023/2842; all-gear prohibition of the
-                Islote Sur Integral Reserve
-    Action:     Board and verify gear and licence; 38 km from base, first stop
-                of the patrol sequence.
-    Caveat:     Check whether an AIS switch-off notification was filed for this
-                time window (Art. 10(2)): the master may lawfully switch off
-                AIS where crew safety or security is imminently at risk.
+  [HIGH_PRIORITY] D-006 - 37.02, -6.92
+    - gear 'bottom_trawl' prohibited in seasonal_closure 'Northern Fishing Ground -
+      seasonal spawning closure'
+    - contextual classifier indicates likely fishing activity during active closure
+      (spawning season)
+    Regulation: gear 'bottom_trawl' prohibited in seasonal_closure 'Northern Fishing
+                Ground - seasonal spawning closure'
+    Action:     Proceed to position 37.02, -6.92 and board to verify compliance with the
+                seasonal closure and the prohibited gear restriction
+    Caveat:     The vessel may be transiting through the closure area without fishing
+                activity, which would not be an infringement.
 
-  [MEDIUM] D-005 - 36.49, -6.78
-    - apparent fishing activity inside an integral reserve where all gear is
-      prohibited
-    Regulation: all-gear prohibition of the Islote Sur Integral Reserve
-    Action:     Visual check while transiting to D-010; 44 km from base.
-    Caveat:     Below the AIS carriage threshold: absence of a broadcast is not
-                an indicator here, and radar-based activity inference for a
-                9.5 m vessel may be wrong.
+  [MEDIUM_PRIORITY] D-005 - 36.49, -6.78
+    - apparent fishing activity inside integral_reserve 'Islote Sur Integral Reserve'
+      where all fishing gear is prohibited (activity per contextual classifier,
+      non-observational)
+    Regulation: all fishing gear is prohibited
+    Action:     Proceed to position 36.49, -6.78 and board to verify that no gear is
+                deployed, given the integral reserve prohibition
+    Caveat:     The vessel may be transiting through the reserve without fishing
+                activity, which would not constitute a violation.
 
 ========================================================================
 OUTPUT VALIDATION
@@ -333,96 +294,83 @@ OUTPUT VALIDATION
 Output validation: no issues.
 ```
 
-D-006 is broadcasting, so its brief (not shown) cites only the closure and the gear
-prohibition — never the carriage requirement — and its caveat says nothing about AIS.
-D-005's brief exists because its zone indicator is real, but no AIS provision appears in
-it. These properties are enforced in code, not hoped for.
-
-**Validation gates the output.** Every report is checked against the dossier before a
-human sees it. If any blocking issue is found — an AIS citation against a broadcasting or
-sub-threshold vessel, an altered coordinate, a regulation named for a record with no
-indicators, a high-priority record silently missing its brief, or a suppressed vessel
-reintroduced into the narrative — **the briefs are withheld, only the issue summary is
-printed, and the process exits non-zero**. Positions in briefs are compared numerically
-against the dossier: the model formats coordinates, it never sources them. Both agents
-are validated, in both languages the system currently ships prompts for (English and
-Spanish patterns).
+D-006 is broadcasting, and its brief cites only the closure and the gear prohibition — never
+the carriage requirement, which is not engaged for a vessel that is transmitting. D-005's
+brief states in the caveat why its silence carries no weight. Neither property is left to
+the model's goodwill: both are checked before the report is printed.
 
 ---
 
 ## Model selection
 
-We ran the identical pipeline across the Nemotron 3 family rather than assuming the
-largest model is the right one.
+We ran the identical pipeline across the Nemotron 3 family rather than assuming the largest
+model is the right one.
 
 | Model | Behaviour observed |
 |---|---|
-| `nemotron-3-nano-30b-a3b` | Fast. In early runs it reintroduced suppressed sub-threshold vessels into its narrative and drifted towards invented caveats. **Those failure modes are exactly what the validator now blocks deterministically** — with the guardrail in code, nano is a viable choice where latency or cost dominates, because a bad output cannot reach an inspector. |
-| `nemotron-3-super-120b-a12b` | Holds the caution boundary throughout without tripping the validator: fewer blocked-and-retried runs. Caveats stay conservative and grounded. **Current default.** |
+| `nemotron-3-nano-30b-a3b` | **Failed to complete the writer task.** On the full dossier it collapsed into a degenerate repetition loop, emitting 49 KB of a single repeated sentence without ever opening an object. This is a capability limit, not a formatting one, and no retry recovers it. The agent layer now detects the loop and says so explicitly. |
+| `nemotron-3-super-120b-a12b` | Completes both agent roles reliably, keeps the suppression rule intact in its narrative, and restates indicator text faithfully. **Current default.** |
 | `nemotron-3-ultra-550b-a55b` | Largest; evaluated for the final demo where latency is not a constraint. |
-
-The point is not "the big model is safe and the small one is not" — safety is not
-delegated to model choice at all. The deterministic validator makes the safety properties
-hold for **any** model; model choice then becomes what it should be: a quality/latency
-trade-off, measured by how often a model's output survives validation unblocked.
 
 Each agent can run on a different model via `ANALYST_MODEL` and `WRITER_MODEL`, so
 reasoning-heavy and formatting-heavy steps can be sized independently.
 
-**Observed failure mode.** When the Article 10 carriage requirement was first surfaced to
-the writer agent, the model began stamping it onto AIS-matched vessels that were plainly
-broadcasting, and generalised a zone's specific gear restrictions into a blanket
-prohibition. Attributing a breach to a compliant vessel is the worst error this system can
-make, so the writer is constrained to cite only provisions present in that record's own
-indicator list, and the validator independently blocks any AIS citation for a record
-whose indicators do not engage it. Guardrails here are not prompt hygiene; they are the
-product.
+**Observed failure modes, and what we did about them.** In one run the writer copied the
+analyst's shorthand category labels into the briefs, so an inspector would have received
+"ais" and "zone" instead of the facts. In another it omitted a medium-priority record
+entirely, and stamped the AIS carriage requirement onto vessels that were plainly
+broadcasting. We did not respond by writing a longer prompt: each of those failures is now a
+deterministic rule in `validate.py` with a test that reproduces it. **Guardrails here are not
+prompt hygiene; they are the product.**
+
+**The validator itself was wrong twice.** Two rules passed a report that was visibly
+flawed: an empty `regulation` field slipped through a check that looked only for the words
+"none identified", and a misattributed priority claim written without parentheses slipped
+through a pattern that required them. Both were found by reading a "no issues" run against
+the output by hand. A guardrail that has never been checked against a failure it was
+supposed to catch is an assumption, not a guarantee; both cases are now regression tests.
+
+Scoring weights are transparent but not calibrated against enforcement outcomes. They order
+inspection candidates and are deliberately reported as ordinal priority levels with a count
+of concurring indicators, never as a probability of infringement. The engine enforces the
+invariant that a record scores above zero if and only if it has at least one indicator.
 
 ---
 
 ## Current status
 
-Working end-to-end prototype: deterministic engine plus both agents running against open
-Nemotron models. Demo data is synthetic; its schema mirrors the real sources, so going
-live starts with reimplementing `src/data.py` — with one honest caveat. The real Global
-Fishing Watch SAR dataset provides, per detection: position, timestamp, estimated length,
-whether the detection was matched to an AIS broadcast, and a **contextual**
-fishing-likelihood score. It does **not** provide `likely_gear` or `speed_kn` for
-unmatched detections — in our demo data those are enrichment. The engine already treats
-them accordingly (gear inference for unmatched detections is context, not an indicator;
-the fishing score is labelled non-observational), so no scoring logic changes when the
-enrichment fields are absent, but a live deployment must either drop them or source them
-from the fleet registry for matched vessels.
+Working end-to-end prototype: deterministic engine, two agents on open Nemotron models, and
+a deterministic validator, with 40 tests that run without an API key or network access.
+Demo data is synthetic.
+
+**What the real source does and does not provide.** Global Fishing Watch publishes, per SAR
+detection, an estimated length, AIS matching status and model scores. It does not publish
+gear type, speed or heading for unmatched detections, and it cannot: a Sentinel-1 scene is an
+instant, not a trajectory. Its fishing classification for unmatched detections is contextual
+rather than observational. The engine reflects this — gear is context rather than an
+indicator for dark targets, and the fishing item is labelled non-observational — so going
+live means replacing `src/data.py` **and** dropping the fields the demo enriches.
 
 | Layer | Planned source |
 |---|---|
-| Vessel detections | Global Fishing Watch — "Vessel detections from Sentinel-1 SAR" |
-| Benchmark / training | xView3 dark vessel detection dataset |
-| Raw imagery (phase 2) | Copernicus Data Space Ecosystem (Sentinel-1 / Sentinel-2) |
+| Vessel detections | Global Fishing Watch — "Vessel detections from Sentinel-1 SAR" (access granted) |
+| Benchmark | xView3 dark vessel detection dataset |
+| Raw imagery (phase 2) | Copernicus Data Space Ecosystem (Sentinel-1) |
 | Protected areas | Natura 2000 marine, WDPA, marine reserves of fishing interest |
 | Seasonal closures | Official bulletins |
 
-### Known limitations (deliberate, documented)
-
-- `length_sigma_m` (radar length uncertainty) is a placeholder pending calibration
-  against Paolo et al. 2024.
-- Scoring weights are transparent but not calibrated against enforcement outcomes;
-  calibration is phase 3.
-- The exact paragraph numbering of the amended Article 10 should be confirmed against
-  the consolidated text of Regulation (EC) No 1224/2009 as amended by Regulation (EU)
-  2023/2842.
-- Zone polygons are demo rectangles with a dependency-free point-in-polygon test; real
-  Natura 2000 / WDPA geometries need shapely + geopandas.
-
 ### Roadmap
-
-- **Phase 1 (done):** deterministic cross-reference + two-agent pipeline on existing
-  detections, both agent outputs validated in code.
-- **Phase 2 (hackathon):** real Global Fishing Watch data; multimodal reasoning over
-  Sentinel-1 image chips using `nemotron-3-nano-omni-30b-a3b-reasoning`; self-hosted NIM
-  deployment on OCI so that operational data stays inside the authority's environment.
-- **Phase 3:** evaluation harness measuring precision against known enforcement outcomes;
-  weight calibration; domain fine-tuning with LoRA.
+- **Phase 1 (done):** deterministic cross-reference, two-agent pipeline, output validator,
+  patrol sequencing.
+- **Phase 2 (hackathon):** real Global Fishing Watch data (API access already granted, so
+  this starts on day one); real Natura 2000 polygons via shapely, which the current
+  dependency-free ray casting cannot handle — real boundaries have holes and multipolygons;
+  multimodal reasoning over Sentinel-1 image chips with
+  `nemotron-3-nano-omni-30b-a3b-reasoning`; self-hosted NIM on OCI so operational data stays
+  inside the authority's environment.
+- **Phase 3:** calibrate the length-uncertainty sigma against the detection literature;
+  evaluation harness measuring precision against known enforcement outcomes; recurring
+  closures that cross a calendar year; domain fine-tuning with LoRA.
 
 ---
 
@@ -437,16 +385,16 @@ pip install -r requirements.txt
 export NVIDIA_API_KEY='nvapi-...'        # Windows: $env:NVIDIA_API_KEY = 'nvapi-...'
 python src/main.py
 
-# 3. Try a different model
-export NEMOTRON_MODEL='nvidia/nemotron-3-nano-30b-a3b'
+# 3. Choose models per agent
+export ANALYST_MODEL='nvidia/nemotron-3-super-120b-a12b'
+export WRITER_MODEL='nvidia/nemotron-3-super-120b-a12b'
 
-# 4. Safety tests: duty of caution, scoring invariant, error policy, validator
+# 4. Tests — no API key, no network
 python src/test_caution.py
 ```
 
 Get an API key at [build.nvidia.com](https://build.nvidia.com). One key works for every
 model — the model is chosen per request, not per key.
-
 `python src/list_models.py nemotron` lists the models available to your key.
 
 ---
@@ -454,15 +402,15 @@ model — the model is chosen per request, not per key.
 ## Repository layout
 
 ```
-src/data.py          data loading — the first file that changes to go live
+src/data.py          data loading — the boundary that changes to go live
 src/geo.py           point-in-polygon and distance, dependency-free
 src/analysis.py      deterministic cross-reference — the agents' tool
-src/validate.py      checks BOTH agents' output against the dossier; blockers stop the report
+src/validate.py      checks model output against the dossier; blocks on failure
 src/agents.py        Nemotron agents: analyst + writer
-src/main.py          orchestrator — validation gates every model output
-src/test_caution.py  safety tests: caution, scoring invariant, error policy, validator
+src/main.py          orchestrator
+src/test_caution.py  35 tests: duty of caution, scoring invariants, validator rules
 src/list_models.py   helper: list models available to your API key
-demo_data/           synthetic demo data (regulatory layer is configuration, not code)
+demo_data/           synthetic demo data, schema mirroring the real sources
 ```
 
 ---
@@ -476,16 +424,14 @@ regional fisheries inspection services.
 
 ## Team
 
-Four undergraduate students (Spain).
+Four undergraduate students in Spain. Work was divided across agent orchestration,
+geospatial and regulatory data, model serving, and product and evaluation; commits were
+made from a shared setup, so the git history does not map one-to-one onto contributors.
 
 - Jorge Rodríguez Fernández
 - Shengyu Chen
 - Pablo Vergés
 - Arsenii Samokhin
-
-The commit history was produced from a single shared machine during the codefest and
-does not reflect individual authorship; design, engine, agents, evaluation and
-documentation were joint work by the four members listed above.
 
 ## License
 

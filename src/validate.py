@@ -60,8 +60,11 @@ def _silently_suppressed_ids(dossier: dict) -> set:
 def _parse_position(value):
     """Accept {"lat": .., "lon": ..} or a "lat, lon" string. None if unusable."""
     if isinstance(value, dict):
+        lat, lon = value.get("lat"), value.get("lon")
+        if lat is None or lon is None:
+            return None
         try:
-            return float(value.get("lat")), float(value.get("lon"))
+            return float(lat), float(lon)
         except (TypeError, ValueError):
             return None
     if isinstance(value, str):
@@ -152,8 +155,9 @@ def validate_report(dossier: dict, report: dict) -> list:
                                f"altered by the model"))
 
         # 5. Do not report "none identified" when indicators exist.
-        if has_indicators and re.search(r"none identified|not applicable|^none$",
-                                        regulation.strip().lower()):
+        if has_indicators and (not regulation.strip() or re.search(
+                r"none identified|not applicable|^none$",
+                regulation.strip().lower())):
             issues.append((WARNING, where,
                            f"record has {len(record['potential_indicators'])} "
                            f"indicator(s) but no regulation is named"))
@@ -164,21 +168,59 @@ def validate_report(dossier: dict, report: dict) -> list:
             issues.append((BLOCKER, where,
                            "record has no indicators, yet a regulation is named"))
 
+        # 6a. The suggested action must be an instruction. A model that writes
+        #     only a distance ("40.77 km from base") has restated context; an
+        #     inspector cannot act on it.
+        action = str(brief.get("suggested_action", "") or "").strip()
+        if not action or len(action) < 15 or re.match(
+                r"^[\d.,]+\s*(km|nm|miles)\b", action, re.IGNORECASE):
+            issues.append((WARNING, where,
+                           f"suggested action '{action}' states context rather "
+                           f"than an instruction the inspector can follow"))
+
+        # 6b. The brief's indicators must restate the record's indicators, not
+        #     the analyst's shorthand labels. A model that writes "ais" or
+        #     "zone" has copied a category name; an inspector cannot act on it.
+        brief_indicators = brief.get("indicators") or []
+        record_indicator_text = " ".join(
+            i.get("reason", "") for i in record.get("potential_indicators", [])
+        ).lower()
+        for entry in brief_indicators:
+            text = str(entry).strip()
+            if len(text) < 25:
+                issues.append((BLOCKER, where,
+                               f"indicator '{text}' is a category label, not a "
+                               f"statement an inspector can act on"))
+                continue
+            words = {w for w in re.findall(r"[a-z]{4,}", text.lower())}
+            if words and record_indicator_text and not (
+                    words & set(re.findall(r"[a-z]{4,}", record_indicator_text))):
+                issues.append((WARNING, where,
+                               "indicator text shares no wording with the "
+                               "record's own indicators"))
+
     # 7. The duty runs in both directions: every high-priority record in the
     #    dossier must have a brief. Silent omission is a blocker.
     for record in dossier.get("records", []):
-        if (record["classification"] == "high_priority"
-                and record["id"] not in briefed_ids):
-            issues.append((BLOCKER, f"brief {record['id']}",
-                           "high-priority record has no inspection brief: the "
-                           "duty of caution runs in both directions and the "
-                           "report must not under-report"))
+        classification = record["classification"]
+        if classification not in ("high_priority", "medium_priority"):
+            continue
+        if record["id"] in briefed_ids:
+            continue
+        severity = BLOCKER if classification == "high_priority" else WARNING
+        issues.append((severity, f"brief {record['id']}",
+                       f"{classification} record has no inspection brief: the "
+                       f"duty of caution runs in both directions and the report "
+                       f"must not under-report"))
 
     # 8. Free prose must not reintroduce vessels whose AIS indicator is
     #    suppressed and that have no other indicators.
     prose_fields = ["executive_summary", "methodological_note",
                     "human_decision_required"]
     prose = " ".join(str(report.get(f, "")) for f in prose_fields)
+    for problem in _misattributed_priorities(prose, records):
+        issues.append((WARNING, "narrative", problem))
+
     for vessel_id in sorted(silent_ids):
         if vessel_id in prose:
             issues.append((BLOCKER, "narrative",
@@ -188,12 +230,66 @@ def validate_report(dossier: dict, report: dict) -> list:
     return issues
 
 
+
+# Priority words as they appear in narrative prose, mapped to the classification
+# value they assert. Hyphen, en dash and non-breaking hyphen all occur in model
+# output, so the pattern accepts any of them.
+_DASH = r"[\s\u2010-\u2015-]*"
+_ID_LIST = r"D-\d+(?:(?:\s*,\s*|\s+and\s+)D-\d+)*"
+
+# Two constructions assert membership of a priority class:
+#   "high-priority vessels (D-010, D-004)"   parenthesised list
+#   "high-priority detections D-010 and D-004"   bare list
+# In the bare form only unpunctuated words may sit between the priority term and
+# the list, so "high-priority candidates first, then D-005" — which asserts
+# nothing about D-005 — does not match.
+_PRIORITY_CLAIMS = [
+    re.compile(rf"(high|medium){_DASH}priority[^.(]{{0,40}}\(([^)]*)\)",
+               re.IGNORECASE),
+    re.compile(rf"(high|medium){_DASH}priority\s+(?:[a-zA-Z]+\s+){{0,3}}({_ID_LIST})",
+               re.IGNORECASE),
+]
+
+
+def _misattributed_priorities(text: str, records: dict) -> list:
+    """Find explicit claims of the form "high-priority vessels (D-1, D-2)".
+
+    Deliberately narrow. A claim is only checked when the ids appear in a
+    parenthesised list immediately after the priority term, because that is the
+    construction that asserts membership. Looser proximity ("inspect the
+    high-priority cluster first, then D-005") does not assert anything false and
+    must not be flagged.
+    """
+    problems = []
+    seen = set()
+    for pattern in _PRIORITY_CLAIMS:
+        for match in pattern.finditer(text or ""):
+            claimed = f"{match.group(1).lower()}_priority"
+            for vessel_id in re.findall(r"\bD-\d+\b", match.group(2)):
+                record = records.get(vessel_id)
+                if not record or record["classification"] == claimed:
+                    continue
+                key = (vessel_id, claimed)
+                if key in seen:
+                    continue
+                seen.add(key)
+                problems.append(
+                    f"{vessel_id} is {record['classification']} but the narrative "
+                    f"lists it among {claimed} records")
+    return problems
+
+
 def validate_prioritisation(dossier: dict, prioritisation: dict) -> list:
     """Check the analyst-agent output against the dossier."""
     issues = []
     records = _records_by_id(dossier)
     candidate_ids = {r["id"] for r in dossier.get("inspection_candidates", [])}
     silent_ids = _silently_suppressed_ids(dossier)
+
+    narrative = " ".join(str(prioritisation.get(f, "")) for f in
+                         ("observed_pattern", "overall_recommendation"))
+    for problem in _misattributed_priorities(narrative, records):
+        issues.append((WARNING, "analyst narrative", problem))
 
     for candidate in prioritisation.get("prioritised_candidates", []) or []:
         vessel_id = candidate.get("id")

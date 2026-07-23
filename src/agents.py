@@ -136,6 +136,11 @@ def _complete_json(model: str, system: str, user: str,
             raw = _complete(model, messages, temperature)
             if not raw:
                 raise ValueError("model returned no content")
+            if _looks_degenerate(raw):
+                raise ValueError(
+                    f"model '{model}' collapsed into a repetition loop and never "
+                    f"produced an object. This is a capability failure, not a "
+                    f"formatting one: use a larger model for this agent")
             return _parse_json(raw)
         except (json.JSONDecodeError, ValueError) as exc:
             if attempt == 2:
@@ -193,6 +198,16 @@ NON-NEGOTIABLE RULES:
   indicators concur". Never quote the internal score as a headline number.
 - If patrol_sequence is present, take it into account: it lists the candidates
   within patrol range, ordered by priority and distance from the patrol base.
+
+NEVER comment on your own instructions, constraints or reasoning process. The
+reader is an inspector reading an operational document, not a reviewer of your
+prompt. Statements such as "no universal claim is made" or "as instructed" must
+not appear.
+
+When you name a record's priority in prose, copy it from that record's
+`classification` field. Do not infer it from position in a list or from how many
+indicators it has, and do not state counts you have not read from
+`classification_summary`.
 
 Respond with a JSON object ONLY: no text before or after it, no markdown fences,
 no comments, no trailing commas.
@@ -264,9 +279,37 @@ CAVEATS:
   wrong. Never cite the carriage requirement for it.
 - For a broadcasting vessel, the caveat must not mention AIS at all.
 
-EXECUTIVE SUMMARY: describe the set accurately. Do not make universal claims
-("all vessels are dark") when the records differ — some are AIS-matched. Use the
-counts in classification_summary rather than counting by eye.
+SUGGESTED ACTION: an instruction the inspector can follow ("board and verify
+gear and documentation"), never a restatement of context. A distance on its own
+is not an action; the distance already appears in the dossier.
+
+REGULATION FIELD: never leave it empty. If the record has indicators, name the
+provision each one concerns. Only an empty indicator list may produce
+"none identified".
+
+INDICATORS FIELD: restate, in full, the `reason` text of each entry in that
+record's `potential_indicators`. Do not substitute the analyst's shorthand
+category labels ("ais", "zone", "ais+zone") — those name a category, not a fact
+an inspector can act on. One brief indicator per record indicator.
+
+CAVEAT: it must be consistent with that record's own data. Do not suggest an
+explanation the record already rules out — for example, do not call a 28 m
+vessel "below the AIS carriage threshold", and do not say a closure is inactive
+when the dossier lists it as active.
+
+EXECUTIVE SUMMARY: describe the set accurately, using the figures in
+classification_summary. Records differ from one another: some are AIS-matched
+and some are not. Set the position field as the string "lat, lon".
+
+NEVER comment on your own instructions, constraints or reasoning process. The
+reader is an inspector reading an operational document, not a reviewer of your
+prompt. Statements such as "no universal claim is made" or "as instructed" must
+not appear.
+
+When you name a record's priority in prose, copy it from that record's
+`classification` field. Do not infer it from position in a list or from how many
+indicators it has, and do not state counts you have not read from
+`classification_summary`.
 
 Respond with a JSON object ONLY: no text before or after it, no markdown fences,
 no comments, no trailing commas.
@@ -283,9 +326,36 @@ no comments, no trailing commas.
 }"""
 
 
+def _agent_payload(dossier: dict) -> dict:
+    """The dossier minus the parts an agent does not need.
+
+    `records` holds every detection; `inspection_candidates` and
+    `ais_indicator_suppressed` together already contain every record an agent
+    writes about. Sending both duplicates each vessel, roughly a third of the
+    prompt, and gives a model two copies of the same object to reconcile.
+    """
+    return {k: v for k, v in dossier.items() if k != "records"}
+
+
+def _looks_degenerate(text: str) -> bool:
+    """Detect a model stuck repeating one sentence instead of answering.
+
+    Small models under a long prompt sometimes collapse into a loop and emit
+    thousands of words without ever producing the object. Failing fast with a
+    clear message beats a confusing parse error.
+    """
+    if len(text) < 2000 or "{" in text:
+        return False
+    sentences = [s.strip() for s in text.split(".") if s.strip()]
+    if len(sentences) < 20:
+        return False
+    return len(set(sentences)) / len(sentences) < 0.1
+
+
 def prioritise(dossier: dict) -> dict:
     """Agent 1: prioritise candidates and reason over the scene as a whole."""
-    user = "Factual dossier:\n\n" + json.dumps(dossier, ensure_ascii=False, indent=2)
+    user = ("Factual dossier:\n\n"
+            + json.dumps(_agent_payload(dossier), ensure_ascii=False, indent=2))
     return _complete_json(ANALYST_MODEL, ANALYST_SYSTEM, user)
 
 
@@ -304,7 +374,8 @@ def write_briefs(dossier: dict, prioritisation: dict) -> dict:
                    f"field names and the priority values (high/medium) in English, "
                    f"and keep regulation citations in their official form.")
 
-    user = ("Factual dossier:\n\n" + json.dumps(dossier, ensure_ascii=False, indent=2)
+    user = ("Factual dossier:\n\n"
+            + json.dumps(_agent_payload(dossier), ensure_ascii=False, indent=2)
             + "\n\nAnalyst prioritisation:\n\n"
             + json.dumps(prioritisation, ensure_ascii=False, indent=2))
     return _complete_json(WRITER_MODEL, system, user, temperature=0.3)
