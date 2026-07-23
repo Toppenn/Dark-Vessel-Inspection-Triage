@@ -102,6 +102,9 @@ NON-NEGOTIABLE RULES:
   threshold. Never prioritise them, and state explicitly why they are excluded.
 - A vessel identified via AIS can still show indicators. Do not confuse
   'identified' with 'compliant'.
+- Under Article 10 of Regulation (EC) No 1224/2009 a master may lawfully switch
+  off AIS where crew safety or security is at imminent risk. A dark vessel may
+  therefore be lawfully dark. Never present darkness alone as conclusive.
 
 Respond with a JSON object ONLY, no surrounding text and no markdown:
 {
@@ -121,6 +124,11 @@ decide within two minutes which position to attend.
 
 RULES: do not invent data; never assert offences, only indicators; every brief
 must be traceable back to its source data.
+
+For any vessel flagged as dark, the caveat must state the lawful derogation:
+under Article 10 of Regulation (EC) No 1224/2009 a master may switch off AIS
+where crew safety or security is at imminent risk. Prefer this grounded legal
+caveat over speculative explanations.
 
 Respond with a JSON object ONLY, no surrounding text and no markdown:
 {

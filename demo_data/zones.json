@@ -2,10 +2,11 @@
   "_note": "SYNTHETIC DEMO DATA. The schema deliberately mirrors real marine protected area layers (Natura 2000 marine / WDPA) and officially published seasonal closures, so that swapping in real data only requires reimplementing src/data.py.",
   "config": {
     "ais_length_threshold_m": 15.0,
-    "_threshold_note": "Vessel length above which a fishing vessel is required to carry AIS in EU waters. VERIFY the exact figure and its legal basis before the pitch: this is the single most important number in the system, because it decides who is never flagged.",
+    "_threshold_note": "Legal basis: Article 10(1), Council Regulation (EC) No 1224/2009 — a fishing vessel exceeding 15 m length overall must be fitted with and maintain in operation an AIS. Applicable to all EU-flagged fishing vessels since 31 May 2014. This is the single most important number in the system: it decides who is never flagged. Set per jurisdiction.",
     "fishing_score_threshold": 0.7,
     "study_area": "Gulf of Cadiz (demo)",
-    "output_language": "English"
+    "output_language": "English",
+    "lawful_dark_derogation": "Article 10, Regulation (EC) No 1224/2009 (as revised): the master of a Union fishing vessel may switch off the AIS in exceptional circumstances where the safety or security of the crew is imminently at risk. A dark vessel may therefore be lawfully dark. Surfaced in every brief as a standing caveat."
   },
   "zones": [
     {

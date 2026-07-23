@@ -51,9 +51,18 @@ triage tool from a machine that generates suspicion without basis. Throughout, t
 speaks of *indicators justifying inspection*, never of *offences*. A human officer always
 decides.
 
-The threshold is a configurable parameter in `demo_data/zones.json` so that it can be set
-to the correct legal value for the jurisdiction being analysed, and audited independently
-of the code.
+The threshold is not arbitrary: Article 10(1) of Council Regulation (EC) No 1224/2009
+requires fishing vessels exceeding 15 m length overall to carry and maintain an operational
+AIS, applicable to all EU-flagged fishing vessels since 31 May 2014. Below that length, not
+broadcasting breaches nothing. It is exposed as a configurable parameter in
+`demo_data/zones.json` so it can be set to the correct legal value per jurisdiction and
+audited independently of the code.
+
+The same article provides a lawful derogation: a master may switch off AIS where crew
+safety or security is at imminent risk. **A dark vessel may therefore be lawfully dark.**
+Our writer agent is instructed to surface this grounded legal caveat rather than speculate.
+
+This property is tested, not merely documented — see `src/test_caution.py`.
 
 ---
 
@@ -232,6 +241,9 @@ python src/main.py
 
 # 3. Try a different model
 export NEMOTRON_MODEL='nvidia/nemotron-3-nano-30b-a3b'
+
+# 4. Safety tests for the duty of caution — no API key, no network
+python src/test_caution.py
 ```
 
 Get an API key at [build.nvidia.com](https://build.nvidia.com). One key works for every
@@ -244,13 +256,14 @@ model — the model is chosen per request, not per key.
 ## Repository layout
 
 ```
-src/data.py         data loading — the only file that changes to go live
-src/geo.py          point-in-polygon and distance, dependency-free
-src/analysis.py     deterministic cross-reference — the agents' tool
-src/agents.py       Nemotron agents: analyst + writer
-src/main.py         orchestrator
-src/list_models.py  helper: list models available to your API key
-demo_data/          synthetic demo data
+src/data.py          data loading — the only file that changes to go live
+src/geo.py           point-in-polygon and distance, dependency-free
+src/analysis.py      deterministic cross-reference — the agents' tool
+src/agents.py        Nemotron agents: analyst + writer
+src/main.py          orchestrator
+src/test_caution.py  safety tests for the duty of caution
+src/list_models.py   helper: list models available to your API key
+demo_data/           synthetic demo data
 ```
 
 ---
@@ -265,6 +278,11 @@ regional fisheries inspection services.
 ## Team
 
 Four undergraduate students (Spain).
+
+- Jorge Rodríguez Fernández
+- Shengyu Chen
+- Pablo Vergés
+- Arsenii Samokhin
 
 ## License
 
