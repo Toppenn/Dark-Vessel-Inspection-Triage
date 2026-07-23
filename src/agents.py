@@ -4,6 +4,10 @@ Two specialised agents:
   1. analyst -> reasons over the factual dossier and prioritises candidates
   2. writer  -> turns that prioritisation into inspection briefs
 
+Each agent can run on a different model, so we can measure the quality/latency
+trade-off across the Nemotron 3 family rather than assuming the largest model
+is the right choice.
+
 Design principle: the system PRIORITISES and JUSTIFIES. It does not accuse,
 and it does not conclude that an offence has occurred. The decision to inspect
 is always human, and every output traces back to the data that produced it.
@@ -16,9 +20,22 @@ from openai import OpenAI
 
 BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
 
-# NOTE: verify the exact model identifier in the build.nvidia.com catalogue.
-# Model names change; override with the NEMOTRON_MODEL environment variable.
-MODEL = os.environ.get("NEMOTRON_MODEL", "nvidia/nemotron-3-super")
+# Nemotron 3 family, all with free hosted endpoints on build.nvidia.com:
+#   nvidia/nemotron-3-nano-30b-a3b      fast, 1M context, tool calling
+#   nvidia/nemotron-3-super-120b-a12b   agentic reasoning, good default
+#   nvidia/nemotron-3-ultra-550b-a55b   largest, noticeably slower
+#
+# Phase 2 (multimodal reasoning over Sentinel-1 image chips):
+#   nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+
+MODEL = os.environ.get("NEMOTRON_MODEL", DEFAULT_MODEL)
+ANALYST_MODEL = os.environ.get("ANALYST_MODEL", MODEL)
+WRITER_MODEL = os.environ.get("WRITER_MODEL", MODEL)
+
+# Nemotron 3 models are reasoning models: part of the token budget is spent on
+# internal reasoning before the answer. Too low a ceiling truncates the JSON.
+MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "8000"))
 
 
 def _client() -> OpenAI:
@@ -29,35 +46,48 @@ def _client() -> OpenAI:
             "  Windows PowerShell:  $env:NVIDIA_API_KEY = 'nvapi-...'\n"
             "  macOS / Linux:       export NVIDIA_API_KEY='nvapi-...'"
         )
-    return OpenAI(base_url=BASE_URL, api_key=api_key)
+    return OpenAI(base_url=BASE_URL, api_key=api_key, timeout=300.0)
 
 
-def _complete(system: str, user: str, temperature: float = 0.2) -> str:
+def _complete(model: str, system: str, user: str, temperature: float = 0.2) -> str:
     response = _client().chat.completions.create(
-        model=MODEL,
+        model=model,
         messages=[{"role": "system", "content": system},
                   {"role": "user", "content": user}],
         temperature=temperature,
-        max_tokens=1500,
+        max_tokens=MAX_TOKENS,
     )
-    return "".join(c.message.content or "" for c in response.choices).strip()
+    text = "".join(c.message.content or "" for c in response.choices).strip()
+    if not text:
+        raise RuntimeError(
+            f"Model '{model}' returned no content. It may have spent the whole "
+            f"token budget on reasoning. Try raising MAX_TOKENS (currently "
+            f"{MAX_TOKENS})."
+        )
+    return text
 
 
 def _parse_json(text: str) -> dict:
-    """Models sometimes wrap JSON in code fences; strip them before parsing."""
+    """Models sometimes wrap JSON in code fences or precede it with prose."""
     cleaned = text.strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("```")[1]
-        if cleaned.startswith("json"):
-            cleaned = cleaned[4:]
+    if "```" in cleaned:
+        parts = cleaned.split("```")
+        for part in parts:
+            candidate = part[4:] if part.startswith("json") else part
+            if candidate.strip().startswith("{"):
+                cleaned = candidate
+                break
     cleaned = cleaned.strip()
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
         start, end = cleaned.find("{"), cleaned.rfind("}")
-        if start != -1 and end != -1:
+        if start != -1 and end != -1 and end > start:
             return json.loads(cleaned[start:end + 1])
-        raise
+        raise ValueError(
+            "Could not parse JSON from the model response. First 500 chars:\n"
+            + cleaned[:500]
+        )
 
 
 ANALYST_SYSTEM = """You are an analyst supporting fisheries inspection planning.
@@ -109,7 +139,7 @@ Respond with a JSON object ONLY, no surrounding text and no markdown:
 def prioritise(dossier: dict) -> dict:
     """Agent 1: prioritise candidates and reason over the scene as a whole."""
     user = "Factual dossier:\n\n" + json.dumps(dossier, ensure_ascii=False, indent=2)
-    return _parse_json(_complete(ANALYST_SYSTEM, user))
+    return _parse_json(_complete(ANALYST_MODEL, ANALYST_SYSTEM, user))
 
 
 def write_briefs(dossier: dict, prioritisation: dict) -> dict:
@@ -117,4 +147,4 @@ def write_briefs(dossier: dict, prioritisation: dict) -> dict:
     user = ("Factual dossier:\n\n" + json.dumps(dossier, ensure_ascii=False, indent=2)
             + "\n\nAnalyst prioritisation:\n\n"
             + json.dumps(prioritisation, ensure_ascii=False, indent=2))
-    return _parse_json(_complete(WRITER_SYSTEM, user, temperature=0.3))
+    return _parse_json(_complete(WRITER_MODEL, WRITER_SYSTEM, user, temperature=0.3))

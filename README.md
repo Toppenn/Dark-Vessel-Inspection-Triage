@@ -79,10 +79,126 @@ enforcement decision. A closed API behind a vendor boundary cannot offer either.
 
 ---
 
+## Sample output
+
+### 1. Deterministic cross-reference
+
+`python src/main.py --cross-reference-only`
+
+```
+Detections analysed: 12
+AIS carriage threshold applied: 15.0 m
+Active closure: Northern Fishing Ground - seasonal spawning closure (spawning season)
+
+Classification summary:
+  high_priority      4
+  medium_priority    2
+  low_priority       3
+  non_assessable     3
+
+  D-001  score 100 -> HIGH_PRIORITY
+    Pos 36.72, -7.05 | length 34.0 m | AIS: unmatched (dark) | likely gear: bottom_trawl
+    Zone: Bajo de los Corales Marine Protected Area (marine_protected_area)
+    Indicator: gear 'bottom_trawl' prohibited in marine_protected_area
+      +40  not broadcasting AIS while required to by length
+      +25  inside regulated zone (marine_protected_area)
+      +20  movement consistent with active fishing
+      +15  prohibited gear or active closure in that zone
+
+  D-006 [DEMO VESSEL B / ESP]  score 60 -> MEDIUM_PRIORITY
+    Pos 37.02, -6.92 | length 31.0 m | AIS: matched | likely gear: bottom_trawl
+    Zone: Northern Fishing Ground - seasonal spawning closure (seasonal_closure)
+    Indicator: fishing activity during closure (spawning season)
+
+--- EXCLUDED BY DUTY OF CAUTION (never prioritised) ---
+  D-005: Estimated length 9.5 m is below the AIS carriage threshold (15.0 m).
+         Not broadcasting is not an indicator here. Excluded from prioritisation.
+```
+
+Every point awarded carries a stated reason. D-005 sits inside an integral reserve and is
+still excluded, because below the legal threshold not broadcasting is not an indicator.
+D-006 is fully identified by AIS and still shows an indicator — **identified is not the
+same as compliant**.
+
+### 2. Analyst agent
+
+`python src/main.py`
+
+```
+Excluded by caution:
+  - D-005: vessel length below AIS carriage threshold (9.5 m < 15.0 m), so lack of
+           AIS transmission is not an indicator.
+
+Observed pattern: There is a spatial clustering of dark vessels inside two regulated
+zones: the Bajo de los Corales Marine Protected Area (D-001, D-002) and the Islote Sur
+Integral Reserve (D-004, D-010). Additionally, one AIS-matched vessel (D-006) is
+detected inside the active seasonal spawning closure with prohibited gear.
+
+Stated limitations:
+  - The analysis cannot confirm actual gear use or catch; it relies on radar-derived
+    movement and classification scores.
+  - Temporal information is limited to a single snapshot, so patterns of repeated
+    behaviour cannot be assessed.
+  - Legal determinations (e.g. intent, violations) are beyond the scope of this
+    indicator-based assessment.
+```
+
+The agent restates the exclusions in its own words and declares the limits of its own
+analysis unprompted.
+
+### 3. Writer agent — inspection briefs
+
+```
+  [HIGH] D-001 - 36.72, -7.05
+    - Dark AIS (required but unmatched) inside MPA
+    - Movement consistent with fishing
+    - Likely bottom_trawl prohibited in zone
+    Regulation: MPA-01 (Bajo de los Corales Marine Protected Area)
+    Action:     Deploy inspection vessel to intercept and verify compliance
+    Caveat:     Could be a non-fishing vessel experiencing AIS technical failure
+
+  [MEDIUM] D-008 - 36.3, -7.4
+    - Dark AIS (required but unmatched) outside regulated zones
+    - Movement consistent with fishing
+    Regulation: None (outside regulated zones)
+    Action:     Conduct low-priority check on AIS status and fishing activity
+    Caveat:     May be a legitimate non-fishing vessel with AIS failure
+
+Human decision required: The officer must decide which of the listed vessels to
+intercept and whether to open a formal investigation based on the combined indicators.
+```
+
+Note the second brief: with no regulation breached, the system writes **"Regulation:
+None"** rather than inventing one. Preferring "not applicable" over filling the gap is the
+required behaviour for a system that feeds enforcement files.
+
+---
+
+## Model selection
+
+We ran the identical pipeline across the Nemotron 3 family rather than assuming the
+largest model is the right one.
+
+| Model | Behaviour observed |
+|---|---|
+| `nemotron-3-nano-30b-a3b` | Fast. Applies the exclusion rule correctly in its own section, but then **reintroduces the excluded sub-threshold vessels into its narrative summary** of zones showing suspicious activity. Caveats drift towards invention ("could be a scientific survey vessel operating under a special permit"). |
+| `nemotron-3-super-120b-a12b` | Holds the caution boundary throughout: excluded vessels stay out of the pattern narrative. Caveats stay conservative and grounded ("AIS technical failure"). **Current default.** |
+| `nemotron-3-ultra-550b-a55b` | Largest; evaluated for the final demo where latency is not a constraint. |
+
+This matters more than raw benchmark quality: in this application, a model that lets
+excluded vessels leak back into a suspicion narrative is failing the requirement, however
+fluent the prose. Model choice here is a safety property, not a performance preference.
+
+Each agent can run on a different model via `ANALYST_MODEL` and `WRITER_MODEL`, so
+reasoning-heavy and formatting-heavy steps can be sized independently.
+
+---
+
 ## Current status
 
-Working end-to-end prototype running on synthetic detections whose schema deliberately
-mirrors the real sources, so going live requires reimplementing only `src/data.py`.
+Working end-to-end prototype: deterministic engine plus both agents running against open
+Nemotron models. Demo data is synthetic, but its schema deliberately mirrors the real
+sources, so going live requires reimplementing only `src/data.py`.
 
 | Layer | Planned source |
 |---|---|
@@ -93,10 +209,11 @@ mirrors the real sources, so going live requires reimplementing only `src/data.p
 | Seasonal closures | Official bulletins |
 
 ### Roadmap
-- **Phase 1 (now):** deterministic cross-reference + two-agent pipeline on existing
+- **Phase 1 (done):** deterministic cross-reference + two-agent pipeline on existing
   detections.
 - **Phase 2 (hackathon):** real Global Fishing Watch data; multimodal reasoning over
-  Sentinel-1 image chips using Nemotron Omni; self-hosted NIM deployment on OCI.
+  Sentinel-1 image chips using `nemotron-3-nano-omni-30b-a3b-reasoning`; self-hosted NIM
+  deployment on OCI so that operational data stays inside the authority's environment.
 - **Phase 3:** evaluation harness measuring precision against known enforcement outcomes;
   domain fine-tuning with LoRA.
 
@@ -112,22 +229,28 @@ python src/main.py --cross-reference-only
 pip install -r requirements.txt
 export NVIDIA_API_KEY='nvapi-...'        # Windows: $env:NVIDIA_API_KEY = 'nvapi-...'
 python src/main.py
+
+# 3. Try a different model
+export NEMOTRON_MODEL='nvidia/nemotron-3-nano-30b-a3b'
 ```
 
-Get an API key at [build.nvidia.com](https://build.nvidia.com). Verify the exact model
-identifier in the catalogue and set it via `NEMOTRON_MODEL` if it differs from the default.
+Get an API key at [build.nvidia.com](https://build.nvidia.com). One key works for every
+model — the model is chosen per request, not per key.
+
+`python src/list_models.py nemotron` lists the models available to your key.
 
 ---
 
 ## Repository layout
 
 ```
-src/data.py        data loading — the only file that changes to go live
-src/geo.py         point-in-polygon and distance, dependency-free
-src/analysis.py    deterministic cross-reference — the agents' tool
-src/agents.py      Nemotron agents: analyst + writer
-src/main.py        orchestrator
-demo_data/         synthetic demo data
+src/data.py         data loading — the only file that changes to go live
+src/geo.py          point-in-polygon and distance, dependency-free
+src/analysis.py     deterministic cross-reference — the agents' tool
+src/agents.py       Nemotron agents: analyst + writer
+src/main.py         orchestrator
+src/list_models.py  helper: list models available to your API key
+demo_data/          synthetic demo data
 ```
 
 ---
