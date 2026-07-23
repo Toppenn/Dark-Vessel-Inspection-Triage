@@ -408,7 +408,7 @@ src/analysis.py      deterministic cross-reference — the agents' tool
 src/validate.py      checks model output against the dossier; blocks on failure
 src/agents.py        Nemotron agents: analyst + writer
 src/main.py          orchestrator
-src/test_caution.py  35 tests: duty of caution, scoring invariants, validator rules
+src/test_caution.py  40 tests: duty of caution, scoring invariants, validator rules
 src/list_models.py   helper: list models available to your API key
 demo_data/           synthetic demo data, schema mirroring the real sources
 ```
