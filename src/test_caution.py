@@ -569,33 +569,50 @@ def main() -> int:
 
     print("\nValidator: language and omissions")
 
-    # The lexical-overlap check compares against an English dossier. With a
-    # non-English working language every correct brief would trip it.
-    # Copy then assign: dict(dossier, output_language="Spanish") widens every
-    # value type to include str, which loses the shape of the records.
+    # Fidelity must hold in the authority's working language, not only in
+    # English. The earlier version of this test asserted that a Spanish report
+    # raised no alarm — which it did, because the check was switched off for
+    # Spanish. That verified the absence of a check, not a check. These two
+    # verify the check itself, in both directions.
     spanish_dossier = dict(dossier)
     spanish_dossier["output_language"] = "Spanish"
     candidates = spanish_dossier["inspection_candidates"]
-    spanish_report = {
-        "executive_summary": "Se han identificado candidatos a inspeccion.",
-        "inspection_briefs": [
-            {"id": r["id"],
-             "priority": r["classification"].replace("_priority", ""),
-             "position": (f"{r['position']['lat']}, {r['position']['lon']}"),
-             "indicators": ["actividad pesquera aparente en zona regulada segun "
-                            "el clasificador contextual"],
-             "regulation_concerned": "Reglamento (CE) 1224/2009",
-             "suggested_action": "Proceder a la posicion e inspeccionar el arte",
-             "caveat": "El buque podria estar en transito sin faenar"}
-            for r in candidates],
-        "methodological_note": "n/a", "human_decision_required": "n/a",
-    }
-    lexical = [i for i in validate.validate_report(spanish_dossier, spanish_report)
-               if "shares no wording" in i[2]]
+
+    def build_spanish_brief(indicators_for):
+        return {
+            "executive_summary": "Se han identificado candidatos a inspeccion.",
+            "inspection_briefs": [
+                {"id": r["id"],
+                 "priority": r["classification"].replace("_priority", ""),
+                 "position": (f"{r['position']['lat']}, {r['position']['lon']}"),
+                 "indicators": indicators_for(r),
+                 "regulation_concerned": r["potential_indicators"][0]["reason"][:60],
+                 "suggested_action": "Proceder a la posicion e inspeccionar el arte",
+                 "caveat": "El buque podria estar en transito sin faenar"}
+                for r in candidates],
+            "methodological_note": "n/a", "human_decision_required": "n/a",
+        }
+
+    def fidelity_alarms(report):
+        return [i for i in validate.validate_report(spanish_dossier, report)
+                if "cite none of" in i[2]]
+
+    fabricated = build_spanish_brief(
+        lambda r: ["el buque presenta danos estructurales visibles en el casco"])
     results.append(check(
-        not lexical,
-        f"a Spanish-language report raises no lexical-overlap alarms "
-        f"({len(lexical)} raised)"))
+        len(fidelity_alarms(fabricated)) >= len(candidates),
+        f"fabricated Spanish indicators are caught "
+        f"({len(fidelity_alarms(fabricated))} of {len(candidates)} briefs)"))
+
+    def faithful_translation(record):
+        tokens = sorted(validate._invariant_tokens(" ".join(
+            i["reason"] for i in record["potential_indicators"])))
+        return ["eslora estimada por radar e indicios en zona regulada; "
+                "referencias: " + ", ".join(tokens)]
+
+    results.append(check(
+        not fidelity_alarms(build_spanish_brief(faithful_translation)),
+        "a faithful Spanish translation raises no fidelity alarm"))
 
     # The analyst must not silently drop a high-priority record either.
     high_ids = [r["id"] for r in dossier["records"]
@@ -608,6 +625,39 @@ def main() -> int:
         any(high_ids[1] in m and "did not prioritise" in m
             for _, _, m in omitted),
         "flags a high-priority record the analyst left out"))
+
+    print("\nDegraded indicators do not create candidacy")
+
+    # A length estimate that does not clear the threshold once its own +/-sigma
+    # is applied yields an indicator whose text says "inconclusive". It may
+    # corroborate; it must not put a vessel on the patrol route by itself.
+    threshold = config["ais_length_threshold_m"]
+    sigma = config.get("length_sigma_m", 0.0)
+    near = threshold - 1.0          # inside the uncertainty band
+    firmly = threshold + sigma + 1.0  # clear of it
+
+    near_record = analysis.assess_detection(
+        det("T-NEAR", 36.0, -8.0, near, ais_matched=False, fishing=0.1),
+        zones_doc["zones"], config, day)
+    results.append(check(
+        near_record["potential_indicators"]
+        and near_record["classification"] == "below_candidate_threshold",
+        f"a {near} m estimate against a {threshold} m threshold is recorded but "
+        f"not a candidate (got {near_record['classification']})"))
+
+    firm_record = analysis.assess_detection(
+        det("T-FIRM", 36.0, -8.0, firmly, ais_matched=False, fishing=0.1),
+        zones_doc["zones"], config, day)
+    results.append(check(
+        firm_record["classification"] == "medium_priority",
+        f"a {firmly} m estimate, clear of the uncertainty band, is a candidate "
+        f"(got {firm_record['classification']})"))
+
+    # And the record must not reach the patrol route either.
+    results.append(check(
+        all(r["classification"] != "below_candidate_threshold"
+            for r in dossier["inspection_candidates"]),
+        "no below-threshold record appears among inspection candidates"))
 
     passed = sum(results)
     print(f"\n{passed}/{len(results)} checks passed\n")

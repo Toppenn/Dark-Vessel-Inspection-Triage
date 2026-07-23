@@ -47,6 +47,22 @@ def _mentions_ais(text: str) -> bool:
     return any(re.search(p, lowered) for p in _AIS_PATTERNS)
 
 
+
+# Tokens that survive translation: zone identifiers, figures and legal
+# references are written the same way in any working language. Comparing these
+# gives a fidelity check that works in every language, rather than a word-
+# overlap check that only works in the one language the authority will not use.
+_INVARIANT_TOKEN = re.compile(
+    r"[A-Z]{2,4}-\d{2,}"        # zone ids: RES-03, CLS-02, MPA-01
+    r"|\d{4}/\d{4}"             # legal references: 1224/2009, 2023/2842
+    r"|\d+\.\d+"                # figures: 22.0, 15.0
+)
+
+
+def _invariant_tokens(text: str) -> set:
+    return set(_INVARIANT_TOKEN.findall(text or ""))
+
+
 def _records_by_id(dossier: dict) -> dict:
     return {r["id"]: r for r in dossier.get("records", [])}
 
@@ -172,6 +188,22 @@ def validate_report(dossier: dict, report: dict) -> list:
             issues.append((BLOCKER, where,
                            "record has no indicators, yet a regulation is named"))
 
+        # 6c. Fidelity across languages. The brief must restate the record's
+        #     indicators rather than invent new ones, and word overlap cannot
+        #     show that once the brief is a translation. Tokens that translation
+        #     leaves untouched can: zone identifiers, figures and legal
+        #     references. Checked over the brief as a whole, because a single
+        #     indicator may legitimately carry none of them while another does.
+        record_tokens = _invariant_tokens(" ".join(
+            i.get("reason", "") for i in record.get("potential_indicators", [])))
+        brief_tokens = _invariant_tokens(" ".join(
+            str(x) for x in (brief.get("indicators") or [])))
+        if record_tokens and not (brief_tokens & record_tokens):
+            issues.append((WARNING, where,
+                           "the brief's indicators cite none of the zone "
+                           "identifiers, figures or legal references that "
+                           "appear in the record's own indicators"))
+
         # 6a. The suggested action must be an instruction. A model that writes
         #     only a distance ("40.77 km from base") has restated context; an
         #     inspector cannot act on it.
@@ -196,10 +228,7 @@ def validate_report(dossier: dict, report: dict) -> list:
                                f"indicator '{text}' is a category label, not a "
                                f"statement an inspector can act on"))
                 continue
-            # The lexical-overlap check compares the brief against a dossier
-            # written in English. When the authority's working language differs
-            # the brief is a translation, so shared wording is not expected and
-            # the check would fire on every correct brief.
+            # Word overlap works only where brief and dossier share a language.
             words = {w for w in re.findall(r"[a-z]{4,}", text.lower())}
             if english_output and words and record_indicator_text and not (
                     words & set(re.findall(r"[a-z]{4,}", record_indicator_text))):

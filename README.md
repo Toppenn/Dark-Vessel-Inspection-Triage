@@ -108,6 +108,17 @@ three-state rule applies, governed by a configurable `length_sigma_m`. **The sig
 in the configuration is a placeholder**; calibrating it against the published detection
 literature is an immediate task, not a finished one.
 
+
+**A degraded indicator may corroborate a candidacy; it may not create one.** When the
+estimate does not clear the threshold once its own uncertainty is applied, the resulting
+indicator says so in its own text — and a record carrying only that is recorded, not
+actioned. Without the rule, a 14 m estimate against a 15 m threshold with ±2 m of sensor
+error would put a vessel on the patrol route on the strength of an indicator reading
+"inconclusive", and would create a cliff between 13 m and 14 m on a measurement that cannot
+resolve the difference. This is a consequence we introduced ourselves when classification
+moved from points to indicator counts: the score distinguished firm from degraded, and the
+new classifier initially did not.
+
 These properties are tested, not merely documented — see `src/test_caution.py`.
 
 ---
@@ -164,9 +175,13 @@ The validator checks, for both the analyst and the writer:
 
 Each rule exists because a model produced that failure in a real run. Position tolerance is
 0.001° (~110 m): the model copies a coordinate rather than computing one, so the tolerance
-absorbs formatting rounding and nothing else. The lexical-overlap check is skipped when the
-working language is not English, because against a translated brief it fired on every
-correct entry.
+absorbs formatting rounding and nothing else. Indicator fidelity is checked on tokens that
+translation leaves untouched — zone identifiers, figures and legal references — rather than
+on word overlap, which only works when the brief and the dossier share a language. An
+earlier version simply disabled the check outside English, which meant the guarantee did not
+exist in the one language the authority actually uses; making the zone identifier part of
+every zone indicator was what made the check possible in any language, and makes the
+indicator more precise for the inspector at the same time.
 
 ---
 
@@ -380,7 +395,7 @@ no equivalent band — but we would rather flag it as unresolved than defend it 
 ## Current status
 
 Working end-to-end prototype: deterministic engine, two agents on open Nemotron models, and
-a deterministic validator, with 46 tests that run without an API key or network access.
+a deterministic validator, with 50 tests that run without an API key or network access.
 Demo data is synthetic.
 
 **What the real source does and does not provide.** Global Fishing Watch publishes, per SAR
@@ -448,7 +463,7 @@ src/analysis.py      deterministic cross-reference — the agents' tool
 src/validate.py      checks model output against the dossier; blocks on failure
 src/agents.py        Nemotron agents: analyst + writer
 src/main.py          orchestrator
-src/test_caution.py  46 tests: duty of caution, scoring invariants, validator rules
+src/test_caution.py  50 tests: duty of caution, scoring invariants, validator rules
 src/list_models.py   helper: list models available to your API key
 demo_data/           synthetic demo data, schema mirroring the real sources
 ```

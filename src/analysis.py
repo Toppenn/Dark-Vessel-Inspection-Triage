@@ -172,6 +172,11 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date) -> d
     elif dark and applicability == AIS_INCONCLUSIVE:
         indicators.append({
             "kind": "ais_inconclusive", "zone": None, "zone_id": None,
+            # Degraded: it may support a candidacy raised by something else, but
+            # it must not create one on its own. The length estimate that
+            # produced it does not clear the threshold once its own uncertainty
+            # is taken into account.
+            "degraded": True,
             "reason": (
                 f"radar-estimated length {length} m is near the "
                 f"{length_threshold} m threshold (within k*sigma = "
@@ -208,7 +213,8 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date) -> d
                     "rests_on_activity": True,
                     "reason": (
                         f"apparent fishing activity inside {zone['type']} "
-                        f"'{zone['name']}' where all fishing gear is prohibited "
+                        f"'{zone['name']}' ({zone['id']}) where all fishing gear "
+                        f"is prohibited "
                         f"(activity per contextual classifier, non-observational)"),
                 })
                 score_items.append((
@@ -221,7 +227,7 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date) -> d
                 indicators.append({
                     "kind": "zone", "zone": zone["name"], "zone_id": zone["id"],
                     "reason": (f"gear '{gear}' (fleet registry) prohibited in "
-                               f"{zone['type']} '{zone['name']}'"),
+                               f"{zone['type']} '{zone['name']}' ({zone['id']})"),
                 })
                 score_items.append((
                     f"registry gear prohibited in zone ({zone['id']})",
@@ -231,7 +237,8 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date) -> d
                 # observation: context only, never an indicator.
                 context.append(
                     f"radar-inferred gear class '{gear}' would be prohibited in "
-                    f"{zone['type']} '{zone['name']}', but gear inference for an "
+                    f"{zone['type']} '{zone['name']}' ({zone['id']}), but gear "
+                    f"inference for an "
                     f"unmatched detection is enrichment, not observation - "
                     f"context only, to be verified on inspection")
         if _closure_active(zone, day) and fishing:
@@ -241,7 +248,8 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date) -> d
                 "reason": (
                     f"contextual classifier indicates likely fishing activity "
                     f"(non-observational) during active closure "
-                    f"({zone['closure']['reason']}) in '{zone['name']}'"),
+                    f"({zone['closure']['reason']}) in '{zone['name']}' "
+                    f"({zone['id']})"),
             })
             score_items.append((
                 f"likely fishing during active closure ({zone['id']})",
@@ -296,13 +304,29 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date) -> d
     # claim we already make to the reader ("N independent indicators concur"),
     # and the weights now do only what the README says they do: order records
     # within a class.
-    if len(indicators) >= HIGH_INDICATOR_COUNT:
+    # Only a firm indicator can make a record an inspection candidate. A
+    # degraded one — a length estimate that does not clear the threshold once
+    # its own uncertainty is applied — may corroborate a candidacy raised by
+    # something else, but cannot raise one alone. Without this, a 14 m estimate
+    # against a 15 m threshold with +/-2 m of sensor error would put a vessel on
+    # the patrol route on the strength of an indicator whose own text says
+    # "inconclusive", and would create a cliff between 13 m and 14 m on a
+    # measurement that cannot resolve the difference.
+    firm = [i for i in indicators if not i.get("degraded")]
+    degraded_only = len(indicators) - len(firm)
+
+    if len(firm) >= HIGH_INDICATOR_COUNT:
         classification = "high_priority"
-        note = f"{len(indicators)} independent indicators concur."
-    elif indicators:
+        note = f"{len(firm)} independent indicators concur."
+    elif firm:
         classification = "medium_priority"
-        note = (f"{len(indicators)} indicator; partial, requires "
-                f"corroboration.")
+        note = (f"{len(firm)} indicator; partial, requires corroboration."
+                + (f" {degraded_only} further indicator(s) are degraded and "
+                   f"corroborate only." if degraded_only else ""))
+    elif indicators:
+        classification = "below_candidate_threshold"
+        note = (f"{degraded_only} degraded indicator(s) only: recorded, but not "
+                f"sufficient to raise an inspection candidate.")
     elif ais_suppressed:
         classification = "ais_not_applicable"
         note = ais_note
@@ -353,7 +377,8 @@ def analyse(zones_doc: dict, detections_doc: dict) -> dict:
     records = [assess_detection(d, zones, config, day)
                for d in detections_doc["detections"]]
 
-    order = {"high_priority": 0, "medium_priority": 1, "low_priority": 2,
+    order = {"high_priority": 0, "medium_priority": 1,
+             "below_candidate_threshold": 2,
              "no_indicators": 3, "ais_not_applicable": 4}
     records.sort(key=lambda r: (order[r["classification"]], -r["score"]))
 
