@@ -86,6 +86,21 @@ def print_dossier(dossier: dict) -> None:
                   f"{stop['distance_from_base_km']:>7} km  "
                   f"({stop['position']['lat']}, {stop['position']['lon']})")
 
+    others = [r for r in dossier.get("records", [])
+              if not r["classification"].endswith("_priority")
+              and r["id"] not in {x["id"] for x in
+                                  dossier.get("ais_indicator_suppressed", [])}]
+    if others:
+        # Printed rather than dropped: a record can carry an indicator that
+        # cites a legal provision and still fall below the candidate threshold.
+        # Reporting only what we act on would hide that from the reader.
+        print("\n--- BELOW CANDIDATE THRESHOLD (listed, not actioned) ---")
+        for record in others:
+            reasons = [i["reason"] for i in record.get("potential_indicators", [])]
+            summary = reasons[0][:90] + "..." if reasons else "no indicators"
+            print(f"  {record['id']} ({record['classification']}, "
+                  f"score {record['score']}): {summary}")
+
     print("\n--- AIS INDICATOR SUPPRESSED (duty of caution) ---")
     for record in dossier["ais_indicator_suppressed"]:
         print(f"  {record['id']} ({record['classification']}): {record['ais_note']}")

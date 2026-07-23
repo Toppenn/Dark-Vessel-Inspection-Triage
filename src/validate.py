@@ -36,7 +36,10 @@ _AIS_PATTERNS = [
 
 # Degrees of latitude/longitude. ~1 km at these latitudes: generous enough for
 # formatting round-trips, far too small for the model to relocate a vessel.
-_POSITION_TOLERANCE_DEG = 0.01
+# The model copies a coordinate; it does not compute one. The tolerance
+# only absorbs formatting rounding, not drift: 0.01 deg is ~1.1 km, enough
+# to cross a zone boundary.
+_POSITION_TOLERANCE_DEG = 0.001
 
 
 def _mentions_ais(text: str) -> bool:
@@ -86,6 +89,7 @@ def validate_report(dossier: dict, report: dict) -> list:
     records = _records_by_id(dossier)
     silent_ids = _silently_suppressed_ids(dossier)
     briefs = report.get("inspection_briefs", []) or []
+    english_output = str(dossier.get("output_language", "English")).lower() == "english"
     briefed_ids = set()
 
     for brief in briefs:
@@ -192,8 +196,12 @@ def validate_report(dossier: dict, report: dict) -> list:
                                f"indicator '{text}' is a category label, not a "
                                f"statement an inspector can act on"))
                 continue
+            # The lexical-overlap check compares the brief against a dossier
+            # written in English. When the authority's working language differs
+            # the brief is a translation, so shared wording is not expected and
+            # the check would fire on every correct brief.
             words = {w for w in re.findall(r"[a-z]{4,}", text.lower())}
-            if words and record_indicator_text and not (
+            if english_output and words and record_indicator_text and not (
                     words & set(re.findall(r"[a-z]{4,}", record_indicator_text))):
                 issues.append((WARNING, where,
                                "indicator text shares no wording with the "
@@ -311,6 +319,15 @@ def validate_prioritisation(dossier: dict, prioritisation: dict) -> list:
                            f"{vessel_id} has its AIS indicator suppressed and no "
                            f"other indicators, yet appears in the analyst "
                            f"narrative"))
+
+    prioritised_ids = {c.get("id") for c in
+                       prioritisation.get("prioritised_candidates", []) or []}
+    for record in dossier.get("records", []):
+        if (record["classification"] == "high_priority"
+                and record["id"] not in prioritised_ids):
+            issues.append((BLOCKER, "analyst prioritisation",
+                           f"{record['id']} is high_priority in the dossier but "
+                           f"the analyst did not prioritise it"))
 
     return issues
 

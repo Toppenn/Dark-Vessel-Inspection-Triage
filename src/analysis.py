@@ -45,17 +45,23 @@ DEFAULT_WEIGHTS = {
     "fishing_context": 10,
 }
 
-HIGH_THRESHOLD = 70
-MEDIUM_THRESHOLD = 40
+# Two or more independent indicators concurring makes a record high priority;
+# a single indicator is worth an inspector's attention but not precedence.
+HIGH_INDICATOR_COUNT = 2
 
 CANDIDATE_CLASSES = ("high_priority", "medium_priority")
 
 
 def _scene_date(scene: dict) -> date:
     timestamp = scene.get("timestamp")
+    if not isinstance(timestamp, str):
+        raise ValueError(
+            f"scene timestamp is missing or not a string: {timestamp!r}. A "
+            f"silently wrong analysis date can activate or deactivate seasonal "
+            f"closures.")
     try:
         return datetime.fromisoformat(timestamp.replace("Z", "+00:00")).date()
-    except (AttributeError, TypeError, ValueError) as exc:
+    except ValueError as exc:
         raise ValueError(
             f"scene timestamp is missing or invalid: {timestamp!r}. A silently "
             f"wrong analysis date can activate or deactivate seasonal closures."
@@ -124,7 +130,17 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date) -> d
     ais_status = _ais_status(detection)
     matched = ais_status == "matched"
     dark = ais_status == "dark"
-    fishing = detection.get("fishing_score", 0.0) >= fishing_threshold
+    # A missing activity score must not silently mean "not fishing": that would
+    # suppress zone indicators without anyone noticing. Length, timestamp and
+    # closure already fail loudly; this field decides indicators too.
+    if "fishing_score" not in detection:
+        raise ValueError(
+            f"detection {detection.get('id', '?')} has no fishing_score; a "
+            f"missing activity score cannot be read as absence of activity")
+    fishing = detection["fishing_score"] >= fishing_threshold
+    # Gear may legitimately be absent — it is context for unmatched detections
+    # and only becomes an indicator for AIS-matched ones, where it comes from
+    # the fleet registry. "unknown" never produces an indicator.
     gear = detection.get("likely_gear", "unknown")
     applicability = _ais_applicability(length, length_threshold, sigma, sigma_k)
 
@@ -182,9 +198,14 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date) -> d
         if "all" in prohibited:
             # Gear identity is irrelevant where all fishing gear is prohibited;
             # the violation is apparent fishing activity. Transit is not fishing.
-            if fishing or (matched and gear not in ("in_transit", "unknown")):
+            # Presence is not activity. The registry gear class says what a
+            # vessel is licensed for, not what it is doing, so it cannot support
+            # a claim of "apparent fishing activity". Only the activity
+            # classifier can, and it must clear its own threshold.
+            if fishing:
                 indicators.append({
                     "kind": "zone", "zone": zone["name"], "zone_id": zone["id"],
+                    "rests_on_activity": True,
                     "reason": (
                         f"apparent fishing activity inside {zone['type']} "
                         f"'{zone['name']}' where all fishing gear is prohibited "
@@ -216,6 +237,7 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date) -> d
         if _closure_active(zone, day) and fishing:
             indicators.append({
                 "kind": "zone", "zone": zone["name"], "zone_id": zone["id"],
+                "rests_on_activity": True,
                 "reason": (
                     f"contextual classifier indicates likely fishing activity "
                     f"(non-observational) during active closure "
@@ -225,9 +247,18 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date) -> d
                 f"likely fishing during active closure ({zone['id']})",
                 weights["zone_violation"]))
 
-    # Corroboration only: the fishing classifier is contextual and never
-    # scores on its own — the invariant score>0 ⟺ indicators holds.
-    if fishing and indicators:
+    # Corroboration only: the fishing classifier is contextual and never scores
+    # on its own — the invariant score>0 ⟺ indicators holds.
+    #
+    # It is also withheld when an indicator already rests on the same signal. A
+    # closure indicator, or an "all gear prohibited" indicator, exists only
+    # because the classifier fired; awarding corroboration for it would count
+    # one observation twice, and here that double count is what pushes a record
+    # across the high-priority boundary.
+    activity_already_counted = any(
+        i.get("kind") == "zone" and i.get("rests_on_activity")
+        for i in indicators)
+    if fishing and indicators and not activity_already_counted:
         score_items.append((
             "contextual classifier indicates likely fishing activity "
             "(non-observational) - corroboration only",
@@ -240,24 +271,38 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date) -> d
         ais_note = ("Below the AIS carriage threshold: absence of an AIS "
                     "broadcast is not an indicator. Other indicators, if any, "
                     "remain.")
-        if length >= vms_threshold:
+        # The VMS threshold is applied to the same noisy radar estimate as the
+        # AIS one, so it gets the same uncertainty band. Stating the band is
+        # what keeps the note a pointer to a cross-check rather than a claim.
+        margin = sigma_k * sigma
+        if length - margin >= vms_threshold:
             ais_note += (
                 f" The appropriate cross-check is VMS: vessels of "
                 f"{vms_threshold} m and over must carry an operational VMS "
                 f"(since January 2026), and the authority already holds that "
                 f"track.")
+        elif length + margin >= vms_threshold:
+            ais_note += (
+                f" The estimated length is within sensor uncertainty of the "
+                f"{vms_threshold} m VMS threshold, so a VMS cross-check may or "
+                f"may not apply; the authority can settle this from its own "
+                f"records.")
 
-    if total >= HIGH_THRESHOLD:
+    # Classification follows the number of independent indicators that concur,
+    # not a points total. Points were previously tuned around a corroboration
+    # item that double-counted the activity classifier; removing that double
+    # count moved records across a threshold it had helped set, which is proof
+    # the threshold was measuring the wrong thing. Counting indicators is the
+    # claim we already make to the reader ("N independent indicators concur"),
+    # and the weights now do only what the README says they do: order records
+    # within a class.
+    if len(indicators) >= HIGH_INDICATOR_COUNT:
         classification = "high_priority"
         note = f"{len(indicators)} independent indicators concur."
-    elif total >= MEDIUM_THRESHOLD:
+    elif indicators:
         classification = "medium_priority"
-        note = (f"{len(indicators)} indicator(s); partial, requires "
+        note = (f"{len(indicators)} indicator; partial, requires "
                 f"corroboration.")
-    elif total > 0:
-        classification = "low_priority"
-        note = ("Isolated or degraded indicator below the candidate "
-                "threshold; not an inspection candidate.")
     elif ais_suppressed:
         classification = "ais_not_applicable"
         note = ais_note

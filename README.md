@@ -62,6 +62,19 @@ was flagged. That is an incentive to switch the transponder off. In the demo sce
 exactly that case: it is below the threshold, its AIS indicator is suppressed and explained,
 and it is still a medium-priority candidate because of a zone indicator.
 
+### Presence is not activity
+
+A zone violation requires activity, and the only activity signal available is the
+contextual classifier. The fleet registry gear class states what a vessel is *licensed*
+for, not what it is doing, so it cannot support a claim that fishing is taking place.
+
+This is not hypothetical caution. An earlier version raised "apparent fishing activity"
+against a compliant vessel — AIS on, transiting an integral reserve at 11 knots, activity
+classifier at 0.05 — purely because it had a purse seine on its licence. The system was
+asserting something the classifier had explicitly not said. That branch is gone, and a
+regression test now holds the line in both directions: the compliant transit raises no
+indicator, and a vessel actually fishing in the same reserve still does.
+
 ### The legal basis, and its limits
 
 The threshold is not arbitrary. Article 10(1) of Council Regulation (EC) No 1224/2009, as
@@ -143,12 +156,17 @@ The validator checks, for both the analyst and the writer:
 | A high-priority record with no brief (under-reporting) | blocker |
 | A vessel with its AIS indicator suppressed and no other indicators, reintroduced in the narrative | blocker |
 | A prioritised id that does not exist in the dossier, or is not a candidate | blocker |
+| A high-priority record the analyst left out of its prioritisation | blocker |
 | An indicator written as a category label ("ais", "zone") rather than a statement | blocker |
 | A record with indicators but no regulation named, including an empty field | warning |
 | A suggested action that restates context ("40.77 km from base") instead of instructing | warning |
 | A medium-priority record with no brief | warning |
 
-Each rule exists because a model produced that failure in a real run.
+Each rule exists because a model produced that failure in a real run. Position tolerance is
+0.001° (~110 m): the model copies a coordinate rather than computing one, so the tolerance
+absorbs formatting rounding and nothing else. The lexical-overlap check is skipped when the
+working language is not English, because against a translated brief it fired on every
+correct entry.
 
 ---
 
@@ -183,7 +201,6 @@ Classification summary:
                classifier, non-observational)
       +40  no AIS broadcast matched while the carriage requirement is potentially engaged
       +30  apparent fishing where all gear is prohibited (RES-03)
-      +10  contextual classifier indicates likely fishing activity - corroboration only
 
   D-001  -> MEDIUM_PRIORITY | 1 independent indicator(s) concur | 71.04 km from base
     Pos 36.72, -7.05 | length 34.0 m | AIS: unmatched (dark) | likely gear: bottom_trawl
@@ -203,7 +220,6 @@ Classification summary:
     AIS note: Below the AIS carriage threshold: absence of an AIS broadcast is not an
               indicator. Other indicators, if any, remain.
       +30  apparent fishing where all gear is prohibited (RES-03)
-      +10  contextual classifier indicates likely fishing activity - corroboration only
 
 --- PATROL SEQUENCE (priority, then distance from base) ---
   D-010  high_priority      38.0 km  (36.44, -6.7)
@@ -214,20 +230,27 @@ Classification summary:
   D-001  medium_priority   71.04 km  (36.72, -7.05)
   D-008  medium_priority  102.56 km  (36.3, -7.4)
 
+--- BELOW CANDIDATE THRESHOLD (listed, not actioned) ---
+  D-003 (no_indicators, score 0): no indicators
+  D-009 (no_indicators, score 0): no indicators
+  D-012 (no_indicators, score 0): no indicators
+
 --- AIS INDICATOR SUPPRESSED (duty of caution) ---
   D-005 (medium_priority): Below the AIS carriage threshold: absence of an AIS broadcast
         is not an indicator. Other indicators, if any, remain.
-  D-007 (ais_not_applicable): ... The appropriate cross-check is VMS: vessels of 12.0 m
-        and over must carry an operational VMS (since January 2026), and the authority
-        already holds that track.
+  D-007 (ais_not_applicable): ... The estimated length is within sensor uncertainty of the
+        12.0 m VMS threshold, so a VMS cross-check may or may not apply; the authority can
+        settle this from its own records.
 ```
 
-Three things to read here. **D-005** is below the threshold, has its AIS indicator suppressed
+Four things to read here. **D-005** is below the threshold, has its AIS indicator suppressed
 and explained, and is still a candidate on a zone indicator — the duty of caution removes one
 piece of evidence, not the vessel. **D-001** shows the gear class demoted to *context, not an
 indicator*: gear cannot be inferred from a radar return on an unmatched detection, so it does
-not score. And the patrol sequence reorders the list by what a patrol vessel can actually
-reach.
+not score. **D-003, D-009 and D-012** are printed even though nothing will be done about
+them, because a record can carry an indicator that cites a legal provision and still fall
+below the candidate threshold; reporting only what we act on would hide that. And the patrol
+sequence reorders the list by what a patrol vessel can actually reach.
 
 ### 2. Analyst agent
 
@@ -330,17 +353,34 @@ through a pattern that required them. Both were found by reading a "no issues" r
 the output by hand. A guardrail that has never been checked against a failure it was
 supposed to catch is an assumption, not a guarantee; both cases are now regression tests.
 
-Scoring weights are transparent but not calibrated against enforcement outcomes. They order
-inspection candidates and are deliberately reported as ordinal priority levels with a count
-of concurring indicators, never as a probability of infringement. The engine enforces the
-invariant that a record scores above zero if and only if it has at least one indicator.
+**Classification counts indicators; it does not total points.** Two or more independent
+indicators concurring makes a record high priority, one makes it medium, none makes it
+neither. The weights survive only to order records *within* a class.
+
+That change came out of a bug. A corroboration item was awarding points for the activity
+classifier even where an indicator already rested on it — one observation counted twice —
+and removing the double count moved a record across the high-priority boundary. A threshold
+that shifts when a double count is removed was measuring the double count. Counting
+concurring indicators is also the claim the output already makes to its reader, so the
+number shown and the classification given are now the same fact.
+
+The weights remain uncalibrated against enforcement outcomes and are never presented as a
+probability of infringement. The engine enforces the invariant that a record scores above
+zero if and only if it has at least one indicator.
+
+**An open question we have not resolved.** Radar-inferred *gear* is treated as context and
+scores nothing, because it is an inference rather than an observation. Radar-inferred
+*length* near the threshold does produce an indicator that cites a legal provision. Both
+come from the same sensor. There is an argument for the asymmetry — length is a continuous
+quantity with a bounded, quantifiable uncertainty, while gear is a categorical guess with
+no equivalent band — but we would rather flag it as unresolved than defend it as settled.
 
 ---
 
 ## Current status
 
 Working end-to-end prototype: deterministic engine, two agents on open Nemotron models, and
-a deterministic validator, with 40 tests that run without an API key or network access.
+a deterministic validator, with 46 tests that run without an API key or network access.
 Demo data is synthetic.
 
 **What the real source does and does not provide.** Global Fishing Watch publishes, per SAR
@@ -408,7 +448,7 @@ src/analysis.py      deterministic cross-reference — the agents' tool
 src/validate.py      checks model output against the dossier; blocks on failure
 src/agents.py        Nemotron agents: analyst + writer
 src/main.py          orchestrator
-src/test_caution.py  40 tests: duty of caution, scoring invariants, validator rules
+src/test_caution.py  46 tests: duty of caution, scoring invariants, validator rules
 src/list_models.py   helper: list models available to your API key
 demo_data/           synthetic demo data, schema mirroring the real sources
 ```

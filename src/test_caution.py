@@ -18,6 +18,7 @@ import sys
 
 import analysis
 import data
+import geo
 import validate
 
 
@@ -512,6 +513,101 @@ def main() -> int:
         and not any(high["id"] in m and "narrative lists it among" in m
                     for _, _, m in flagged),
         "flags an unparenthesised priority claim, and only the wrong id"))
+
+    print("\nPresence is not activity")
+
+    # A compliant vessel: AIS on, registry gear aboard, crossing an integral
+    # reserve at transit speed with the activity classifier at 0.05. An earlier
+    # version raised "apparent fishing activity" for it, because the registry
+    # gear class alone satisfied the branch. Registry gear says what a vessel is
+    # licensed for, not what it is doing.
+    reserve = next(z for z in zones_doc["zones"]
+                   if "all" in z.get("prohibited_gear", []))
+    inside = geo.centroid(reserve["polygon"])
+    transiting = analysis.assess_detection(
+        det("T-TRANSIT", inside[0], inside[1], 30.0, ais_matched=True,
+            fishing=0.05, gear="purse_seine"),
+        zones_doc["zones"], config, day)
+    results.append(check(
+        not transiting["potential_indicators"] and transiting["score"] == 0,
+        f"a compliant vessel in transit through an integral reserve raises no "
+        f"indicator (got {len(transiting['potential_indicators'])})"))
+
+    # The same position with the classifier above threshold must still be caught.
+    fishing_there = analysis.assess_detection(
+        det("T-FISHING", inside[0], inside[1], 30.0, ais_matched=True,
+            fishing=0.95, gear="purse_seine"),
+        zones_doc["zones"], config, day)
+    results.append(check(
+        bool(fishing_there["potential_indicators"]),
+        "apparent fishing in the same reserve is still an indicator"))
+
+    print("\nNo double counting")
+
+    # The corroboration item must not be awarded when an indicator already rests
+    # on the activity classifier: that is one observation counted twice, and it
+    # previously decided a classification.
+    corroboration = [b for b in fishing_there["score_breakdown"]
+                     if "corroboration" in b["factor"]]
+    results.append(check(
+        not corroboration,
+        f"no corroboration points where an indicator already rests on the "
+        f"activity classifier (got {corroboration})"))
+
+    print("\nFail loudly on decisive missing fields")
+
+    missing_activity = det("T-NOFS", 36.3, -7.4, 30.0)
+    missing_activity.pop("fishing_score")
+    try:
+        analysis.assess_detection(missing_activity, zones_doc["zones"], config, day)
+        raised = False
+    except ValueError as exc:
+        raised = "fishing_score" in str(exc)
+    results.append(check(
+        raised,
+        "a missing fishing_score raises instead of silently meaning 'not fishing'"))
+
+    print("\nValidator: language and omissions")
+
+    # The lexical-overlap check compares against an English dossier. With a
+    # non-English working language every correct brief would trip it.
+    # Copy then assign: dict(dossier, output_language="Spanish") widens every
+    # value type to include str, which loses the shape of the records.
+    spanish_dossier = dict(dossier)
+    spanish_dossier["output_language"] = "Spanish"
+    candidates = spanish_dossier["inspection_candidates"]
+    spanish_report = {
+        "executive_summary": "Se han identificado candidatos a inspeccion.",
+        "inspection_briefs": [
+            {"id": r["id"],
+             "priority": r["classification"].replace("_priority", ""),
+             "position": (f"{r['position']['lat']}, {r['position']['lon']}"),
+             "indicators": ["actividad pesquera aparente en zona regulada segun "
+                            "el clasificador contextual"],
+             "regulation_concerned": "Reglamento (CE) 1224/2009",
+             "suggested_action": "Proceder a la posicion e inspeccionar el arte",
+             "caveat": "El buque podria estar en transito sin faenar"}
+            for r in candidates],
+        "methodological_note": "n/a", "human_decision_required": "n/a",
+    }
+    lexical = [i for i in validate.validate_report(spanish_dossier, spanish_report)
+               if "shares no wording" in i[2]]
+    results.append(check(
+        not lexical,
+        f"a Spanish-language report raises no lexical-overlap alarms "
+        f"({len(lexical)} raised)"))
+
+    # The analyst must not silently drop a high-priority record either.
+    high_ids = [r["id"] for r in dossier["records"]
+                if r["classification"] == "high_priority"]
+    partial = {"prioritised_candidates": [{"id": high_ids[0], "rank": 1}],
+               "observed_pattern": "", "overall_recommendation": "",
+               "excluded_by_caution": [], "limitations": []}
+    omitted = validate.validate_prioritisation(dossier, partial)
+    results.append(check(
+        any(high_ids[1] in m and "did not prioritise" in m
+            for _, _, m in omitted),
+        "flags a high-priority record the analyst left out"))
 
     passed = sum(results)
     print(f"\n{passed}/{len(results)} checks passed\n")
