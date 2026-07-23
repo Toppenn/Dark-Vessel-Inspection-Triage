@@ -18,6 +18,7 @@ import sys
 
 import analysis
 import data
+import validate
 
 
 def banner(title: str) -> None:
@@ -83,8 +84,12 @@ def print_briefs(report: dict) -> None:
 
     banner("INSPECTION BRIEFS")
     for brief in report.get("inspection_briefs", []):
+        # Models return position either as "lat, lon" or as {"lat":..,"lon":..}.
+        position = brief.get("position")
+        if isinstance(position, dict):
+            position = f"{position.get('lat')}, {position.get('lon')}"
         print(f"\n  [{str(brief.get('priority', '')).upper()}] "
-              f"{brief.get('id')} - {brief.get('position')}")
+              f"{brief.get('id')} - {position}")
         for indicator in brief.get("indicators", []):
             print(f"    - {indicator}")
         print(f"    Regulation: {brief.get('regulation_concerned')}")
@@ -134,10 +139,21 @@ def main() -> int:
     report = agents.write_briefs(dossier, prioritisation)
     print_briefs(report)
 
+    # --- Step 4: validate the model's output against the dossier ---
+    issues = validate.validate_report(dossier, report)
+    banner("OUTPUT VALIDATION")
+    print(validate.format_issues(issues))
+    if validate.has_blockers(issues):
+        print("\nBlocking issues found: this report must not be issued to an "
+              "inspector as it stands.")
+
     with open("last_run.json", "w", encoding="utf-8") as f:
         json.dump({"dossier": dossier,
                    "prioritisation": prioritisation,
-                   "report": report}, f, ensure_ascii=False, indent=2)
+                   "report": report,
+                   "validation": [{"severity": s_, "where": w_, "message": m_}
+                                  for s_, w_, m_ in issues]},
+                  f, ensure_ascii=False, indent=2)
     print("\n(Full output written to last_run.json)")
     return 0
 

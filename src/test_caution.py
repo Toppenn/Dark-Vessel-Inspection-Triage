@@ -13,6 +13,7 @@ import sys
 
 import analysis
 import data
+import validate
 
 
 def check(condition: bool, description: str) -> bool:
@@ -87,6 +88,66 @@ def main() -> int:
     results.append(check(
         len(matched_flagged) > 0,
         f"identified vessels can still be flagged ({[r['id'] for r in matched_flagged]})"))
+
+    print("\nOutput validation")
+
+    # The validator is fed the exact failures observed in real model output, so
+    # that a regression in the guardrails is caught without an API call.
+    excluded_id = dossier["excluded_by_caution"][0]["id"]
+    matched = next(r for r in dossier["inspection_candidates"]
+                   if r["ais"] == "matched")
+    dark = next(r for r in dossier["inspection_candidates"]
+                if r["ais"] != "matched")
+
+    bad_report = {
+        "executive_summary": (
+            f"All vessels are dark. Two additional dark vessels ({excluded_id}) "
+            f"were detected inside the active closure."),
+        "inspection_briefs": [
+            {"id": matched["id"], "priority": "medium",
+             "regulation_concerned": "Article 10(1), Council Regulation (EC) No 1224/2009",
+             "caveat": "the master may switch off AIS for crew safety"},
+            {"id": dark["id"], "priority": "high",
+             "regulation_concerned": "none identified",
+             "caveat": "AIS technical failure"},
+        ],
+        "methodological_note": "single snapshot",
+        "human_decision_required": "whether to dispatch",
+    }
+    bad = validate.validate_report(dossier, bad_report)
+    kinds = {(sev, msg) for sev, _, msg in bad}
+
+    results.append(check(
+        any("broadcasting" in m and "carriage" in m for _, m in kinds),
+        "flags the AIS carriage requirement cited against a broadcasting vessel"))
+    results.append(check(
+        any("appears in the narrative" in m for _, m in kinds),
+        "flags an excluded vessel reintroduced in the narrative"))
+    results.append(check(
+        any("no regulation is named" in m for _, m in kinds),
+        "flags a record with indicators but no regulation named"))
+    results.append(check(
+        validate.has_blockers(bad),
+        "classifies these as blocking issues"))
+
+    # A clean report over the same dossier must produce no issues at all,
+    # otherwise the validator is simply complaining about everything.
+    good_report = {
+        "executive_summary": "Six vessels warrant inspection.",
+        "inspection_briefs": [
+            {"id": dark["id"], "priority": "high",
+             "regulation_concerned": "Article 10(1), Council Regulation (EC) No 1224/2009",
+             "caveat": "the master may switch off AIS for crew safety"},
+            {"id": matched["id"], "priority": "medium",
+             "regulation_concerned": "seasonal closure CLS-02, prohibited gear",
+             "caveat": "gear inference from radar may be wrong"},
+        ],
+        "methodological_note": "single snapshot",
+        "human_decision_required": "whether to dispatch",
+    }
+    clean = validate.validate_report(dossier, good_report)
+    results.append(check(not clean,
+                         f"passes a well-formed report with no false alarms ({clean})"))
 
     passed = sum(results)
     print(f"\n{passed}/{len(results)} checks passed\n")

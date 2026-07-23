@@ -51,6 +51,7 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date) -> d
     """Assess a single detection and return its record with an itemised score."""
     length_threshold = config["ais_length_threshold_m"]
     fishing_threshold = config["fishing_score_threshold"]
+    ais_legal_basis = config.get("ais_legal_basis", "AIS carriage requirement")
 
     length = detection.get("estimated_length_m", 0.0)
     dark = not detection.get("ais_matched", False)
@@ -60,6 +61,19 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date) -> d
 
     containing = _zones_containing(detection, zones)
     indicators = []
+
+    # Failing to broadcast while required is itself a potential infringement of
+    # the AIS carriage and operation requirement, independently of location.
+    # Without this, a large dark vessel outside every protected zone would be
+    # reported with no regulation named at all.
+    if dark and ais_required:
+        indicators.append({
+            "zone": None, "zone_id": None,
+            "reason": (f"vessel of {length} m exceeds the {length_threshold} m AIS "
+                       f"carriage threshold but was not matched to an AIS broadcast "
+                       f"({ais_legal_basis})"),
+        })
+
     for zone in containing:
         if _gear_prohibited(zone, gear):
             indicators.append({
@@ -81,7 +95,7 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date) -> d
     if fishing:
         score_items.append(("movement consistent with active fishing", 20))
     if indicators:
-        score_items.append(("prohibited gear or active closure in that zone", 15))
+        score_items.append(("a specific regulatory provision is potentially concerned", 15))
 
     total = sum(points for _, points in score_items)
 
@@ -158,6 +172,11 @@ def analyse(zones_doc: dict, detections_doc: dict) -> dict:
         "study_area": config.get("study_area"),
         "output_language": config.get("output_language", "English"),
         "ais_length_threshold_m": config["ais_length_threshold_m"],
+        "ais_legal_basis": config.get("ais_legal_basis"),
+        "lawful_dark_derogation": config.get("lawful_dark_derogation"),
+        "scoring_note": ("Weights are transparent but not yet calibrated against "
+                         "enforcement outcomes. They order candidates; they are not "
+                         "probabilities of infringement."),
         "regulated_zones": [
             {"id": z["id"], "name": z["name"], "type": z["type"],
              "prohibited_gear": z["prohibited_gear"],

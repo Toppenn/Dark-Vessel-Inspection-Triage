@@ -4,3 +4,4 @@ __pycache__/
 last_run.json
 .venv/
 venv/
+last_raw_response.txt

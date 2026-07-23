@@ -62,6 +62,11 @@ The same article provides a lawful derogation: a master may switch off AIS where
 safety or security is at imminent risk. **A dark vessel may therefore be lawfully dark.**
 Our writer agent is instructed to surface this grounded legal caveat rather than speculate.
 
+The duty runs in both directions. The system must not under-report either: a vessel above
+the threshold that is not broadcasting is potentially in breach of the carriage requirement
+itself, wherever it is, and that provision is named explicitly rather than reported as "no
+regulation concerned".
+
 This property is tested, not merely documented — see `src/test_caution.py`.
 
 ---
@@ -86,6 +91,11 @@ inside the authority's own environment — operational data never leaves it — 
 reasoning can be inspected and audited. Both are requirements when an output feeds an
 enforcement decision. A closed API behind a vendor boundary cannot offer either.
 
+Briefs are written in the working language of the authority that will act on them, set by
+`output_language` in the regulatory layer. Inspectors should not have to read enforcement
+paperwork in a foreign language, and an open model running locally can serve languages a
+vendor API may not prioritise.
+
 ---
 
 ## Sample output
@@ -100,24 +110,29 @@ AIS carriage threshold applied: 15.0 m
 Active closure: Northern Fishing Ground - seasonal spawning closure (spawning season)
 
 Classification summary:
-  high_priority      4
-  medium_priority    2
+  high_priority      5
+  medium_priority    1
   low_priority       3
   non_assessable     3
 
   D-001  score 100 -> HIGH_PRIORITY
     Pos 36.72, -7.05 | length 34.0 m | AIS: unmatched (dark) | likely gear: bottom_trawl
     Zone: Bajo de los Corales Marine Protected Area (marine_protected_area)
+    Indicator: vessel of 34.0 m exceeds the 15.0 m AIS carriage threshold but was not
+               matched to an AIS broadcast (Article 10(1), Council Regulation (EC) No 1224/2009)
     Indicator: gear 'bottom_trawl' prohibited in marine_protected_area
       +40  not broadcasting AIS while required to by length
       +25  inside regulated zone (marine_protected_area)
       +20  movement consistent with active fishing
-      +15  prohibited gear or active closure in that zone
+      +15  a specific regulatory provision is potentially concerned
 
-  D-006 [DEMO VESSEL B / ESP]  score 60 -> MEDIUM_PRIORITY
-    Pos 37.02, -6.92 | length 31.0 m | AIS: matched | likely gear: bottom_trawl
-    Zone: Northern Fishing Ground - seasonal spawning closure (seasonal_closure)
-    Indicator: fishing activity during closure (spawning season)
+  D-008  score 75 -> HIGH_PRIORITY
+    Pos 36.3, -7.4 | length 55.0 m | AIS: unmatched (dark) | likely gear: bottom_trawl
+    Indicator: vessel of 55.0 m exceeds the 15.0 m AIS carriage threshold but was not
+               matched to an AIS broadcast (Article 10(1), Council Regulation (EC) No 1224/2009)
+      +40  not broadcasting AIS while required to by length
+      +20  movement consistent with active fishing
+      +15  a specific regulatory provision is potentially concerned
 
 --- EXCLUDED BY DUTY OF CAUTION (never prioritised) ---
   D-005: Estimated length 9.5 m is below the AIS carriage threshold (15.0 m).
@@ -126,8 +141,8 @@ Classification summary:
 
 Every point awarded carries a stated reason. D-005 sits inside an integral reserve and is
 still excluded, because below the legal threshold not broadcasting is not an indicator.
-D-006 is fully identified by AIS and still shows an indicator — **identified is not the
-same as compliant**.
+D-008 is in open water, outside every protected zone, yet the provision it may breach is
+named: the carriage requirement itself. Neither over-reporting nor under-reporting.
 
 ### 2. Analyst agent
 
@@ -135,51 +150,68 @@ same as compliant**.
 
 ```
 Excluded by caution:
-  - D-005: vessel length below AIS carriage threshold (9.5 m < 15.0 m), so lack of
-           AIS transmission is not an indicator.
+  - D-005: vessel length 9.5 m below 15.0 m AIS carriage threshold, darkness not an
+           indicator per Article 10(1) of Regulation (EC) No 1224/2009
 
-Observed pattern: There is a spatial clustering of dark vessels inside two regulated
-zones: the Bajo de los Corales Marine Protected Area (D-001, D-002) and the Islote Sur
-Integral Reserve (D-004, D-010). Additionally, one AIS-matched vessel (D-006) is
-detected inside the active seasonal spawning closure with prohibited gear.
+Observed pattern: High-priority vessels cluster in two protected areas: MPA-01 (D-001,
+D-002) and integral reserve RES-03 (D-004, D-010). A medium-priority vessel (D-006)
+lies within the active seasonal closure CLS-02, while one high-priority target (D-008)
+is offshore of any regulated zone.
 
 Stated limitations:
-  - The analysis cannot confirm actual gear use or catch; it relies on radar-derived
-    movement and classification scores.
-  - Temporal information is limited to a single snapshot, so patterns of repeated
-    behaviour cannot be assessed.
-  - Legal determinations (e.g. intent, violations) are beyond the scope of this
-    indicator-based assessment.
+  - The analysis cannot confirm actual fishing gear use or catch; it only infers likely
+    gear from radar signatures and scores.
+  - Lawful AIS derogations under Article 10 cannot be ruled out for dark vessels, so
+    darkness alone is not proof of non-compliance.
+  - Vessel identity beyond AIS (name, flag, licence) is unknown for dark targets,
+    limiting targeted follow-up.
+  - Temporal changes are not captured in this single-scene assessment.
 ```
 
-The agent restates the exclusions in its own words and declares the limits of its own
-analysis unprompted.
+The agent restates the exclusions in its own words, cites the provision that makes the
+exclusion correct, and declares the limits of its own analysis unprompted — including the
+lawful derogation that could explain the darkness it is reporting.
 
 ### 3. Writer agent — inspection briefs
 
 ```
   [HIGH] D-001 - 36.72, -7.05
-    - Dark AIS (required but unmatched) inside MPA
-    - Movement consistent with fishing
-    - Likely bottom_trawl prohibited in zone
-    Regulation: MPA-01 (Bajo de los Corales Marine Protected Area)
-    Action:     Deploy inspection vessel to intercept and verify compliance
-    Caveat:     Could be a non-fishing vessel experiencing AIS technical failure
+    - vessel of 34.0 m exceeds the 15.0 m AIS carriage threshold but was not matched
+      to an AIS broadcast (Article 10(1), Council Regulation (EC) No 1224/2009)
+    - gear 'bottom_trawl' prohibited in marine_protected_area
+    Regulation: Article 10(1), Council Regulation (EC) No 1224/2009; gear
+                'bottom_trawl' prohibited in marine_protected_area
+    Action:     Board to verify compliance with MPA gear restrictions and AIS
+                carriage requirements.
+    Caveat:     The vessel may lawfully switch off AIS under Article 10 of
+                Regulation (EC) No 1224/2009 if crew safety or security is
+                imminently at risk.
 
-  [MEDIUM] D-008 - 36.3, -7.4
-    - Dark AIS (required but unmatched) outside regulated zones
-    - Movement consistent with fishing
-    Regulation: None (outside regulated zones)
-    Action:     Conduct low-priority check on AIS status and fishing activity
-    Caveat:     May be a legitimate non-fishing vessel with AIS failure
+  [MEDIUM] D-006 - 37.02, -6.92
+    - gear 'bottom_trawl' prohibited in seasonal_closure
+    - fishing activity during closure (spawning season)
+    Regulation: gear 'bottom_trawl' prohibited in seasonal_closure
+    Action:     Board to verify compliance with seasonal closure and gear
+                restrictions.
+    Caveat:     The vessel may be transiting through the seasonal closure area
+                without fishing activity.
 
-Human decision required: The officer must decide which of the listed vessels to
-intercept and whether to open a formal investigation based on the combined indicators.
+========================================================================
+OUTPUT VALIDATION
+========================================================================
+Output validation: no issues.
 ```
 
-Note the second brief: with no regulation breached, the system writes **"Regulation:
-None"** rather than inventing one. Preferring "not applicable" over filling the gap is the
-required behaviour for a system that feeds enforcement files.
+D-006 is broadcasting, and its brief cites only the closure and the gear prohibition —
+never the carriage requirement, which is not engaged for a vessel that is transmitting.
+Its caveat says nothing about AIS. Both properties are enforced in code, not hoped for:
+every report is checked against the dossier before a human sees it, and blocking issues
+stop it being issued.
+
+Briefs are produced only for high- and medium-priority records: a vessel with no
+indicators does not warrant an inspection brief, and every entry an inspector does not
+need is noise. The regulation cited is drawn strictly from that record's own indicator
+list, so an AIS-matched vessel is never associated with the carriage requirement.
 
 ---
 
@@ -191,7 +223,7 @@ largest model is the right one.
 | Model | Behaviour observed |
 |---|---|
 | `nemotron-3-nano-30b-a3b` | Fast. Applies the exclusion rule correctly in its own section, but then **reintroduces the excluded sub-threshold vessels into its narrative summary** of zones showing suspicious activity. Caveats drift towards invention ("could be a scientific survey vessel operating under a special permit"). |
-| `nemotron-3-super-120b-a12b` | Holds the caution boundary throughout: excluded vessels stay out of the pattern narrative. Caveats stay conservative and grounded ("AIS technical failure"). **Current default.** |
+| `nemotron-3-super-120b-a12b` | Holds the caution boundary throughout: excluded vessels stay out of the pattern narrative. Caveats stay conservative and grounded. **Current default.** |
 | `nemotron-3-ultra-550b-a55b` | Largest; evaluated for the final demo where latency is not a constraint. |
 
 This matters more than raw benchmark quality: in this application, a model that lets
@@ -200,6 +232,18 @@ fluent the prose. Model choice here is a safety property, not a performance pref
 
 Each agent can run on a different model via `ANALYST_MODEL` and `WRITER_MODEL`, so
 reasoning-heavy and formatting-heavy steps can be sized independently.
+
+**Observed failure mode.** When the Article 10 carriage requirement was first surfaced to
+the writer agent, the model began stamping it onto AIS-matched vessels that were plainly
+broadcasting, and generalised a zone's specific gear restrictions into a blanket
+prohibition. Attributing a breach to a compliant vessel is the worst error this system can
+make, so the writer is now constrained to cite only provisions present in that record's own
+indicator list, and is explicitly barred from citing the carriage requirement for a
+broadcasting vessel. Guardrails here are not prompt hygiene; they are the product.
+
+Scoring weights are transparent but not yet calibrated against enforcement outcomes. They
+order inspection candidates; they are not probabilities of infringement. Calibration
+against known outcomes is planned for phase 3.
 
 ---
 
@@ -259,6 +303,7 @@ model — the model is chosen per request, not per key.
 src/data.py          data loading — the only file that changes to go live
 src/geo.py           point-in-polygon and distance, dependency-free
 src/analysis.py      deterministic cross-reference — the agents' tool
+src/validate.py      checks model output against the dossier before a human sees it
 src/agents.py        Nemotron agents: analyst + writer
 src/main.py          orchestrator
 src/test_caution.py  safety tests for the duty of caution
@@ -292,3 +337,7 @@ MIT — see `LICENSE`.
 
 All planned data sources are open public data. Model weights are open and used under their
 respective licenses; see the model card on build.nvidia.com.
+
+## Attribution
+
+Vessel detection data provided by Global Fishing Watch (globalfishingwatch.org).

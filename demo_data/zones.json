@@ -3,10 +3,11 @@
   "config": {
     "ais_length_threshold_m": 15.0,
     "_threshold_note": "Legal basis: Article 10(1), Council Regulation (EC) No 1224/2009 — a fishing vessel exceeding 15 m length overall must be fitted with and maintain in operation an AIS. Applicable to all EU-flagged fishing vessels since 31 May 2014. This is the single most important number in the system: it decides who is never flagged. Set per jurisdiction.",
+    "ais_legal_basis": "Article 10(1), Council Regulation (EC) No 1224/2009",
+    "lawful_dark_derogation": "Article 10, Regulation (EC) No 1224/2009 (as revised): the master of a Union fishing vessel may switch off the AIS in exceptional circumstances where the safety or security of the crew is imminently at risk. A dark vessel may therefore be lawfully dark. Surfaced in every brief as a standing caveat.",
     "fishing_score_threshold": 0.7,
     "study_area": "Gulf of Cadiz (demo)",
-    "output_language": "English",
-    "lawful_dark_derogation": "Article 10, Regulation (EC) No 1224/2009 (as revised): the master of a Union fishing vessel may switch off the AIS in exceptional circumstances where the safety or security of the crew is imminently at risk. A dark vessel may therefore be lawfully dark. Surfaced in every brief as a standing caveat."
+    "output_language": "English"
   },
   "zones": [
     {
@@ -14,13 +15,28 @@
       "name": "Bajo de los Corales Marine Protected Area",
       "type": "marine_protected_area",
       "designation": "Natura 2000 marine (demo)",
-      "prohibited_gear": ["bottom_trawl", "purse_seine"],
+      "prohibited_gear": [
+        "bottom_trawl",
+        "purse_seine"
+      ],
       "closure": null,
       "polygon": [
-        [36.60, -7.20],
-        [36.60, -6.90],
-        [36.85, -6.90],
-        [36.85, -7.20]
+        [
+          36.6,
+          -7.2
+        ],
+        [
+          36.6,
+          -6.9
+        ],
+        [
+          36.85,
+          -6.9
+        ],
+        [
+          36.85,
+          -7.2
+        ]
       ]
     },
     {
@@ -28,17 +44,31 @@
       "name": "Northern Fishing Ground - seasonal spawning closure",
       "type": "seasonal_closure",
       "designation": "Seasonal closure (demo)",
-      "prohibited_gear": ["bottom_trawl"],
+      "prohibited_gear": [
+        "bottom_trawl"
+      ],
       "closure": {
         "start": "2026-06-01",
         "end": "2026-09-30",
         "reason": "spawning season"
       },
       "polygon": [
-        [36.90, -7.10],
-        [36.90, -6.75],
-        [37.15, -6.75],
-        [37.15, -7.10]
+        [
+          36.9,
+          -7.1
+        ],
+        [
+          36.9,
+          -6.75
+        ],
+        [
+          37.15,
+          -6.75
+        ],
+        [
+          37.15,
+          -7.1
+        ]
       ]
     },
     {
@@ -46,13 +76,27 @@
       "name": "Islote Sur Integral Reserve",
       "type": "integral_reserve",
       "designation": "Marine reserve of fishing interest (demo)",
-      "prohibited_gear": ["all"],
+      "prohibited_gear": [
+        "all"
+      ],
       "closure": null,
       "polygon": [
-        [36.40, -6.85],
-        [36.40, -6.65],
-        [36.55, -6.65],
-        [36.55, -6.85]
+        [
+          36.4,
+          -6.85
+        ],
+        [
+          36.4,
+          -6.65
+        ],
+        [
+          36.55,
+          -6.65
+        ],
+        [
+          36.55,
+          -6.85
+        ]
       ]
     }
   ]
