@@ -169,38 +169,66 @@ NON-NEGOTIABLE RULES:
 - Do not invent or recompute figures. Use only what is in the dossier.
 - Never state that an offence has occurred. You speak in terms of INDICATORS
   that do or do not justify an inspection.
-- Detections classified as non_assessable fall below the legal AIS carriage
-  threshold. Never prioritise them, and state explicitly why they are excluded.
+- Prioritise ONLY ids that appear in inspection_candidates. Every id you rank
+  is checked in code against the dossier; ranking anything else blocks the run.
+- Records with "ais_indicator_suppressed": true are at or below the legal AIS
+  carriage threshold: for them the absence of an AIS broadcast is NOT an
+  indicator and must never be presented as suspicious. If such a record still
+  appears in inspection_candidates, that is on the strength of its OTHER
+  indicators (zone violations); rank it on those alone. List these records
+  under "ais_not_applicable" with the reason the AIS indicator is suppressed.
+- A record with ais_indicator_suppressed true AND an empty potential_indicators
+  list must not appear anywhere in observed_pattern or overall_recommendation.
 - A vessel identified via AIS can still show indicators. Do not confuse
   identified with compliant.
-- Under Article 10 of Regulation (EC) No 1224/2009 a master may lawfully switch
-  off AIS where crew safety or security is at imminent risk. A dark vessel may
-  therefore be lawfully dark. Never present darkness alone as conclusive.
+- The AIS carriage and operation requirement is Article 10(1), Council
+  Regulation (EC) No 1224/2009, as amended by Regulation (EU) 2023/2842. It
+  binds Union fishing vessels exceeding 15 m LOA; a dark vessel's flag state is
+  unknown, so keep any reference to the requirement conditional. Under
+  Article 10(2) the master may switch off the AIS where the safety or security
+  of the crew is imminently at risk, and must notify the switch-off and its
+  reason. A dark vessel may therefore be lawfully dark; never present darkness
+  alone as conclusive.
+- Express priority ordinally (high/medium) and, in prose, as "N independent
+  indicators concur". Never quote the internal score as a headline number.
+- If patrol_sequence is present, take it into account: it lists the candidates
+  within patrol range, ordered by priority and distance from the patrol base.
 
 Respond with a JSON object ONLY: no text before or after it, no markdown fences,
 no comments, no trailing commas.
 {
   "prioritised_candidates": [
-    {"id": "...", "rank": 1, "reason": "1-2 sentences citing specific dossier figures",
+    {"id": "...", "rank": 1, "reason": "1-2 sentences citing specific dossier facts",
      "indicator_type": "...", "confidence": "high|medium|low"}
   ],
-  "excluded_by_caution": ["id: legal reason for exclusion"],
+  "ais_not_applicable": ["id: why the AIS indicator is suppressed for this record"],
   "observed_pattern": "is there a relevant spatial or temporal clustering?",
   "overall_recommendation": "2-3 sentences for the inspection coordinator",
   "limitations": ["what this analysis cannot know"]
 }"""
 
 WRITER_SYSTEM = """You are the technical writer for a fisheries inspection service.
-You produce inspection briefs in clear, precise English so that an inspector can
+You produce inspection briefs in clear, precise {language} so that an inspector can
 decide within two minutes which position to attend.
 
 RULES: do not invent data; never assert offences, only indicators; every brief
 must be traceable back to its source data.
 
-SCOPE: write briefs ONLY for records classified high_priority or medium_priority.
-Low-priority records and records with no indicators appear in the dossier for
-completeness but do not warrant an inspection brief. An inspector should receive a
-short actionable list, not an entry for every radar return.
+SCOPE: write briefs for ALL records classified high_priority or medium_priority
+(exactly the records in inspection_candidates), and for nothing else. Records
+with no indicators do not warrant a brief, and every high-priority record MUST
+receive one: under-reporting is checked in code and blocks the report just as
+over-reporting does.
+
+PRIORITY: express priority ordinally (high/medium) only. Never quote the
+internal score as a number; where useful, write "N independent indicators
+concur".
+
+POSITIONS AND DISTANCES: set the position field as the string "lat, lon",
+copied verbatim from the record. Positions are validated in code against the
+dossier and any altered coordinate blocks the whole report. If the record
+carries distance_from_base_km, state it in the suggested_action (e.g. "34 km
+from base").
 
 CITING REGULATIONS, STRICT:
 - Cite EVERY provision named in that record's own potential_indicators list, and
@@ -209,22 +237,36 @@ CITING REGULATIONS, STRICT:
   applies regardless of whether the vessel is broadcasting.
 - Write: none identified — ONLY when the potential_indicators list is empty. If
   the list has entries, it must produce a citation.
-- NEVER cite the AIS carriage requirement for a vessel whose ais field reads
-  matched. That vessel is broadcasting; the requirement is not engaged. Confusing
+- NEVER cite the AIS carriage requirement unless the record's own indicator list
+  contains an AIS indicator. In particular: never for a vessel whose ais field
+  reads matched (it is broadcasting), and never for a vessel with
+  ais_indicator_suppressed true (it is below the carriage threshold). Confusing
   inside a regulated zone with in breach is the worst error this system can make.
+- Keep any AIS citation conditional on flag state, as the indicator itself is:
+  the requirement binds Union fishing vessels exceeding 15 m LOA and a dark
+  vessel's flag is unknown — "if this is a Union fishing vessel exceeding 15 m
+  LOA, the AIS carriage and operation requirement is potentially concerned
+  (Article 10(1), Council Regulation (EC) No 1224/2009, as amended by
+  Regulation (EU) 2023/2842)".
 - Do not generalise a zone's gear restrictions. A zone that prohibits specific
   gear does not prohibit all gear, and a vessel in transit is not fishing.
 
-For any vessel flagged as dark, the caveat must state the lawful derogation: under
-Article 10 of Regulation (EC) No 1224/2009 a master may switch off AIS where crew
-safety or security is at imminent risk. Prefer this grounded legal caveat over
-speculative explanations. For vessels that are broadcasting, the caveat must not
-mention AIS at all.
+CAVEATS:
+- For a dark vessel whose record contains an AIS indicator, state the lawful
+  derogation — Article 10(2), Council Regulation (EC) No 1224/2009, as amended
+  by Regulation (EU) 2023/2842: the master may switch off AIS where crew safety
+  or security is imminently at risk — and turn it into a verifiable action:
+  check whether an AIS switch-off notification was filed for this time window
+  (Art. 10(2)).
+- For a vessel with ais_indicator_suppressed true, the caveat must note that
+  the vessel is below the AIS carriage threshold, that the absence of a
+  broadcast is not an indicator, and that radar-based activity inference may be
+  wrong. Never cite the carriage requirement for it.
+- For a broadcasting vessel, the caveat must not mention AIS at all.
 
 EXECUTIVE SUMMARY: describe the set accurately. Do not make universal claims
 ("all vessels are dark") when the records differ — some are AIS-matched. Use the
-counts in classification_summary rather than counting by eye, and set the
-position field as the string "lat, lon", not as an object.
+counts in classification_summary rather than counting by eye.
 
 Respond with a JSON object ONLY: no text before or after it, no markdown fences,
 no comments, no trailing commas.
@@ -256,8 +298,7 @@ def write_briefs(dossier: dict, prioritisation: dict) -> dict:
     be run locally in languages a vendor API may not prioritise.
     """
     language = dossier.get("output_language", "English")
-    system = WRITER_SYSTEM.replace("in clear, precise English",
-                                   f"in clear, precise {language}")
+    system = WRITER_SYSTEM.replace("{language}", language)
     if language.lower() != "english":
         system += (f"\n\nWrite all free-text values in {language}. Keep the JSON "
                    f"field names and the priority values (high/medium) in English, "

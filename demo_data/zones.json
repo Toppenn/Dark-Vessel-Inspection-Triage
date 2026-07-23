@@ -2,10 +2,28 @@
   "_note": "SYNTHETIC DEMO DATA. The schema deliberately mirrors real marine protected area layers (Natura 2000 marine / WDPA) and officially published seasonal closures, so that swapping in real data only requires reimplementing src/data.py.",
   "config": {
     "ais_length_threshold_m": 15.0,
-    "_threshold_note": "Legal basis: Article 10(1), Council Regulation (EC) No 1224/2009 — a fishing vessel exceeding 15 m length overall must be fitted with and maintain in operation an AIS. Applicable to all EU-flagged fishing vessels since 31 May 2014. This is the single most important number in the system: it decides who is never flagged. Set per jurisdiction.",
-    "ais_legal_basis": "Article 10(1), Council Regulation (EC) No 1224/2009",
-    "lawful_dark_derogation": "Article 10, Regulation (EC) No 1224/2009 (as revised): the master of a Union fishing vessel may switch off the AIS in exceptional circumstances where the safety or security of the crew is imminently at risk. A dark vessel may therefore be lawfully dark. Surfaced in every brief as a standing caveat.",
+    "_threshold_note": "Legal basis: Article 10(1), Council Regulation (EC) No 1224/2009, as amended by Regulation (EU) 2023/2842 — a Union fishing vessel exceeding 15 m length overall must be fitted with and maintain in operation an AIS. 'Exceeding' is strict: a vessel of exactly 15.0 m is not covered. This is the single most important number in the system: it decides for whom darkness is never an indicator. Set per jurisdiction.",
+    "ais_legal_basis": "Article 10(1), Council Regulation (EC) No 1224/2009, as amended by Regulation (EU) 2023/2842",
+    "lawful_dark_derogation": "Article 10(2), Council Regulation (EC) No 1224/2009, as amended by Regulation (EU) 2023/2842: the master of a Union fishing vessel may switch off the AIS in exceptional circumstances where the safety or security of the crew is imminently at risk, and must notify the switch-off and its reason to the competent authorities. A dark vessel may therefore be lawfully dark; the verifiable cross-check is whether a switch-off notification was filed for the time window. Exact paragraph numbering to be confirmed against the consolidated text.",
+    "length_sigma_m": 2.0,
+    "_length_sigma_note": "1-sigma uncertainty of the radar length estimate, in metres. PLACEHOLDER — pending calibration against Paolo et al. 2024. The legal threshold sits near the sensor's detection floor, so AIS applicability is three-state: firmly above (length - k*sigma > threshold), near threshold / inconclusive (length + k*sigma > threshold), not applicable (otherwise).",
+    "length_sigma_k": 1.0,
+    "vms_length_threshold_m": 12.0,
+    "_vms_note": "Since January 2026, fishing vessels of 12 m and over must carry an operational VMS. For a small dark vessel at or above this length, the correct statement is not 'unobservable' but 'absence of AIS is not an indicator; the appropriate cross-check is VMS, which the authority already holds'.",
     "fishing_score_threshold": 0.7,
+    "score_weights": {
+      "ais_dark": 40,
+      "ais_dark_inconclusive": 20,
+      "zone_violation": 30,
+      "fishing_context": 10
+    },
+    "_score_weights_note": "Transparent and configurable. Weights order candidates; they are not probabilities of infringement. Points are only ever awarded alongside a concrete indicator: score > 0 if and only if at least one potential indicator exists. Presence inside a zone does not score by itself.",
+    "patrol_base": {
+      "lat": 36.53,
+      "lon": -6.29,
+      "name": "Port of Cadiz patrol base (demo)"
+    },
+    "patrol_radius_km": 120,
     "study_area": "Gulf of Cadiz (demo)",
     "output_language": "English"
   },
