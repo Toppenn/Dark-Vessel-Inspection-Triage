@@ -169,19 +169,32 @@ The validator checks, for both the analyst and the writer:
 | A prioritised id that does not exist in the dossier, or is not a candidate | blocker |
 | A high-priority record the analyst left out of its prioritisation | blocker |
 | An indicator written as a category label ("ais", "zone") rather than a statement | blocker |
+| Brief indicators citing none of the record's zone identifiers, figures or legal references | blocker |
+| A brief listing more indicators than the record contains (invention by addition) | blocker |
+| A narrative claim listing a record among a priority class it does not belong to | warning |
 | A record with indicators but no regulation named, including an empty field | warning |
 | A suggested action that restates context ("40.77 km from base") instead of instructing | warning |
 | A medium-priority record with no brief | warning |
+| A medium-priority record the analyst left out of its prioritisation | warning |
 
 Each rule exists because a model produced that failure in a real run. Position tolerance is
 0.001° (~110 m): the model copies a coordinate rather than computing one, so the tolerance
-absorbs formatting rounding and nothing else. Indicator fidelity is checked on tokens that
-translation leaves untouched — zone identifiers, figures and legal references — rather than
-on word overlap, which only works when the brief and the dossier share a language. An
-earlier version simply disabled the check outside English, which meant the guarantee did not
-exist in the one language the authority actually uses; making the zone identifier part of
-every zone indicator was what made the check possible in any language, and makes the
-indicator more precise for the inspector at the same time.
+absorbs formatting rounding and nothing else. **Indicator fidelity is bounded in both directions, in every language.** The anchor check
+compares tokens that translation leaves untouched — zone identifiers, figures and legal
+references — so it runs whatever the authority's working language is. Word overlap remains a
+secondary signal, but only where brief and dossier share a language.
+
+Anchors bound *substitution*: a brief that replaces the record's content carries none of
+them. They do not bound *addition* — a brief that reproduces every indicator faithfully and
+appends an invented one keeps every anchor and passes. Addition is the likelier failure,
+because models embellish more readily than they replace, and in an inspection brief an added
+line is an accusation nobody observed. So the count is bounded too: a brief may consolidate
+two indicators into one well-formed statement, but never list more than the record contains.
+Both are blockers, because fabricated text sits in the field an inspector reads first.
+
+Making the zone identifier part of every zone indicator is what made the anchor check
+possible in any language, and it makes the indicator more precise for the inspector at the
+same time.
 
 ---
 
@@ -395,7 +408,7 @@ no equivalent band — but we would rather flag it as unresolved than defend it 
 ## Current status
 
 Working end-to-end prototype: deterministic engine, two agents on open Nemotron models, and
-a deterministic validator, with 50 tests that run without an API key or network access.
+a deterministic validator, with 56 tests that run without an API key or network access.
 Demo data is synthetic.
 
 **What the real source does and does not provide.** Global Fishing Watch publishes, per SAR
@@ -463,7 +476,7 @@ src/analysis.py      deterministic cross-reference — the agents' tool
 src/validate.py      checks model output against the dossier; blocks on failure
 src/agents.py        Nemotron agents: analyst + writer
 src/main.py          orchestrator
-src/test_caution.py  50 tests: duty of caution, scoring invariants, validator rules
+src/test_caution.py  56 tests: duty of caution, scoring invariants, validator rules
 src/list_models.py   helper: list models available to your API key
 demo_data/           synthetic demo data, schema mirroring the real sources
 ```

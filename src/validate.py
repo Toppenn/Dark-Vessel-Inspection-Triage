@@ -199,10 +199,26 @@ def validate_report(dossier: dict, report: dict) -> list:
         brief_tokens = _invariant_tokens(" ".join(
             str(x) for x in (brief.get("indicators") or [])))
         if record_tokens and not (brief_tokens & record_tokens):
-            issues.append((WARNING, where,
+            issues.append((BLOCKER, where,
                            "the brief's indicators cite none of the zone "
                            "identifiers, figures or legal references that "
                            "appear in the record's own indicators"))
+
+        # 6d. Rule 6c bounds substitution, not addition: a brief that keeps
+        #     the record's anchors and appends an invented indicator satisfies
+        #     it. Addition is the likelier failure — models embellish more often
+        #     than they replace — and in an inspection brief an added line is a
+        #     fresh accusation nobody observed. A brief may legitimately
+        #     consolidate two indicators into one well-formed statement, so only
+        #     an excess is a failure.
+        brief_indicator_count = len(brief.get("indicators") or [])
+        record_indicator_count = len(record.get("potential_indicators") or [])
+        if brief_indicator_count > record_indicator_count:
+            issues.append((BLOCKER, where,
+                           f"the brief lists {brief_indicator_count} "
+                           f"indicator(s) but the record contains "
+                           f"{record_indicator_count}: the writer has added an "
+                           f"indicator that no fact supports"))
 
         # 6a. The suggested action must be an instruction. A model that writes
         #     only a distance ("40.77 km from base") has restated context; an
@@ -281,7 +297,14 @@ _ID_LIST = r"D-\d+(?:(?:\s*,\s*|\s+and\s+)D-\d+)*"
 # the list, so "high-priority candidates first, then D-005" — which asserts
 # nothing about D-005 — does not match.
 _PRIORITY_CLAIMS = [
-    re.compile(rf"(high|medium){_DASH}priority[^.(]{{0,40}}\(([^)]*)\)",
+    # The window is generous because real sentences put words between the claim
+    # and the list ("High-priority detections cluster west of the base, with
+    # three vessels (D-010, ...)"). It must not cross a second priority term,
+    # though: in "high-priority first, then the medium ones (D-005)" the list
+    # belongs to the second claim, not the first.
+    re.compile(rf"(high|medium){_DASH}priority"
+               rf"((?:(?!high{_DASH}priority|medium{_DASH}priority)[^.(]){{0,100}})"
+               rf"\(([^)]*)\)",
                re.IGNORECASE),
     re.compile(rf"(high|medium){_DASH}priority\s+(?:[a-zA-Z]+\s+){{0,3}}({_ID_LIST})",
                re.IGNORECASE),
@@ -302,7 +325,7 @@ def _misattributed_priorities(text: str, records: dict) -> list:
     for pattern in _PRIORITY_CLAIMS:
         for match in pattern.finditer(text or ""):
             claimed = f"{match.group(1).lower()}_priority"
-            for vessel_id in re.findall(r"\bD-\d+\b", match.group(2)):
+            for vessel_id in re.findall(r"\bD-\d+\b", match.groups()[-1]):
                 record = records.get(vessel_id)
                 if not record or record["classification"] == claimed:
                     continue
@@ -352,11 +375,18 @@ def validate_prioritisation(dossier: dict, prioritisation: dict) -> list:
     prioritised_ids = {c.get("id") for c in
                        prioritisation.get("prioritised_candidates", []) or []}
     for record in dossier.get("records", []):
-        if (record["classification"] == "high_priority"
-                and record["id"] not in prioritised_ids):
-            issues.append((BLOCKER, "analyst prioritisation",
-                           f"{record['id']} is high_priority in the dossier but "
-                           f"the analyst did not prioritise it"))
+        classification = record["classification"]
+        if classification not in ("high_priority", "medium_priority"):
+            continue
+        if record["id"] in prioritised_ids:
+            continue
+        # Symmetric with the writer: dropping a high-priority record is a
+        # blocker, dropping a medium one is visible but not fatal. An analyst
+        # that silently shortens the list is under-reporting either way.
+        severity = BLOCKER if classification == "high_priority" else WARNING
+        issues.append((severity, "analyst prioritisation",
+                       f"{record['id']} is {classification} in the dossier but "
+                       f"the analyst did not prioritise it"))
 
     return issues
 

@@ -659,6 +659,112 @@ def main() -> int:
             for r in dossier["inspection_candidates"]),
         "no below-threshold record appears among inspection candidates"))
 
+    print("\nBriefs may not add indicators the record does not contain")
+
+    # Rule 6c bounds substitution: a brief that replaces the record's content is
+    # caught because it carries none of the record's anchors. It does not bound
+    # addition. A brief that reproduces both indicators faithfully and appends a
+    # third, invented one keeps every anchor and satisfied 6c completely — in
+    # English and in Spanish alike. Addition is the likelier failure, and an
+    # added line in an inspection brief is an accusation nobody observed.
+    two_indicator = next(r for r in dossier["inspection_candidates"]
+                         if len(r["potential_indicators"]) == 2)
+
+    def brief_with(record, indicators):
+        return {
+            "id": record["id"],
+            "priority": record["classification"].replace("_priority", ""),
+            "position": (f"{record['position']['lat']}, "
+                         f"{record['position']['lon']}"),
+            "indicators": indicators,
+            "regulation_concerned":
+                record["potential_indicators"][0]["reason"][:60],
+            "suggested_action": "Board and verify gear and documentation",
+            "caveat": "The gear inference may be wrong",
+        }
+
+    def issues_for(record, indicators):
+        report = {
+            "executive_summary": "Candidates identified.",
+            "inspection_briefs": [brief_with(record, indicators)],
+            "methodological_note": "n/a", "human_decision_required": "n/a",
+        }
+        return [i for i in validate.validate_report(dossier, report)
+                if record["id"] in i[1]]
+
+    faithful = [i["reason"] for i in two_indicator["potential_indicators"]]
+    invented = ("vessel seen deploying prohibited driftnets with undeclared "
+                "protected species aboard")
+
+    added = issues_for(two_indicator, faithful + [invented])
+    results.append(check(
+        any(sev == validate.BLOCKER and "added an indicator" in msg
+            for sev, _, msg in added),
+        f"a faithful brief with one appended invented indicator is blocked "
+        f"({len(faithful)} in record, {len(faithful) + 1} in brief)"))
+
+    # Consolidating two record indicators into one well-formed statement is
+    # legitimate reporting, not invention. Only an excess is a failure.
+    consolidated = issues_for(two_indicator, [" ".join(faithful)])
+    results.append(check(
+        not any("added an indicator" in msg for _, _, msg in consolidated),
+        "consolidating two indicators into one raises no addition issue"))
+
+    # Fabricated indicator text sits in the field an inspector reads first, and
+    # every neighbouring rule blocks. On a faithful translation this check
+    # measures zero, so the false-positive risk that justified a warning is gone.
+    substituted = issues_for(two_indicator,
+                             ["una observacion que no consta en el expediente"])
+    results.append(check(
+        any(sev == validate.BLOCKER and "cite none of" in msg
+            for sev, _, msg in substituted),
+        "a brief citing none of the record's anchors is a blocker, not a warning"))
+
+    print("\nNarrative claims and analyst omissions, at real sentence length")
+
+    high_rec = next(r for r in dossier["records"]
+                    if r["classification"] == "high_priority")
+    med_rec = next(r for r in dossier["records"]
+                   if r["classification"] == "medium_priority")
+    records_by_id = {r["id"]: r for r in dossier["records"]}
+
+    # Real sentences put words between the claim and the list. An earlier window
+    # of 40 characters missed this one at 56.
+    long_claim = (f"High-priority detections cluster west of the patrol base, "
+                  f"with three vessels ({high_rec['id']}, {med_rec['id']}) "
+                  f"showing possible activity inside the reserve")
+    flagged = validate._misattributed_priorities(long_claim, records_by_id)
+    results.append(check(
+        any(med_rec["id"] in p for p in flagged)
+        and not any(high_rec["id"] in p for p in flagged),
+        "a priority claim separated from its list by a clause is caught, and "
+        "only the wrong id is named"))
+
+    # But the window must not run past a second priority term: there the list
+    # belongs to the later claim.
+    two_claims = (f"Inspect the high-priority candidates first, then the "
+                  f"medium-priority ones ({med_rec['id']}).")
+    results.append(check(
+        not validate._misattributed_priorities(two_claims, records_by_id),
+        "a list belonging to a second priority claim is not attributed to the "
+        "first"))
+
+    # The analyst must not silently shorten the candidate list either.
+    without_medium = {
+        "prioritised_candidates": [
+            {"id": r["id"], "rank": i + 1}
+            for i, r in enumerate(dossier["inspection_candidates"])
+            if r["id"] != med_rec["id"]],
+        "observed_pattern": "", "overall_recommendation": "",
+        "excluded_by_caution": [], "limitations": [],
+    }
+    results.append(check(
+        any(med_rec["id"] in m and "did not prioritise" in m
+            for _, _, m in validate.validate_prioritisation(
+                dossier, without_medium)),
+        f"a medium-priority record dropped by the analyst is reported "
+        f"({med_rec['id']})"))
+
     passed = sum(results)
     print(f"\n{passed}/{len(results)} checks passed\n")
     return 0 if passed == len(results) else 1
