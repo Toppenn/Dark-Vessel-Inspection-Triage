@@ -44,6 +44,12 @@ def print_dossier(dossier: dict) -> None:
     print(f"Detections analysed: {dossier['total_detections']}")
     print(f"AIS carriage threshold applied: {dossier['ais_length_threshold_m']} m "
           f"(length uncertainty +/-{dossier['length_sigma_m']} m)")
+    env = dossier.get("environmental_context")
+    if env:
+        print(f"Environmental context ({env['moon_phase']}): "
+              f"angula suitability {env['suitability'].upper()} "
+              f"(scanning-priority signal, not a vessel indicator)")
+        print(f"  {env['rationale']}")
     for closure in dossier["active_closures"]:
         print(f"Active closure: {closure['zone']} ({closure['reason']})")
     if dossier.get("patrol_base"):
@@ -105,6 +111,14 @@ def print_dossier(dossier: dict) -> None:
     for record in dossier["ais_indicator_suppressed"]:
         print(f"  {record['id']} ({record['classification']}): {record['ais_note']}")
 
+    if dossier.get("fixed_structure_suppressed"):
+        print("\n--- ATTRIBUTED TO CHARTED FIXED INFRASTRUCTURE "
+              "(false-positive guard, duty of caution) ---")
+        for record in dossier["fixed_structure_suppressed"]:
+            fx = record.get("fixed_structure", {})
+            print(f"  {record['id']} -> {fx.get('id')} ({fx.get('type')}): "
+                  f"{record['note']}")
+
 
 def print_prioritisation(prioritisation: dict) -> None:
     banner("ANALYST AGENT - PRIORITISATION")
@@ -164,10 +178,14 @@ def main() -> int:
                         help="Run the deterministic engine only, no model calls")
     parser.add_argument("--zones", default="zones.json")
     parser.add_argument("--detections", default="detections.json")
+    parser.add_argument("--source", choices=("local", "gfw"), default="local",
+                        help="'gfw' pulls live Global Fishing Watch SAR "
+                             "detections (needs GFW_TOKEN); falls back to the "
+                             "local file on any failure")
     args = parser.parse_args()
 
     zones_doc = data.load_zones(args.zones)
-    detections_doc = data.load_detections(args.detections)
+    detections_doc = data.load_detections(args.detections, source=args.source)
 
     # --- Step 1: deterministic cross-reference (the tool) ---
     dossier = analysis.analyse(zones_doc, detections_doc)

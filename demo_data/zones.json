@@ -117,5 +117,16 @@
         ]
       ]
     }
+  ],
+  "_fixed_structures_note": "Charted fixed infrastructure (offshore platforms, wind turbines, navigation buoys, aquaculture cages) produces bright, persistent SAR returns that a CFAR detector reads as vessels. A detection falling within match_radius_m of a charted structure is attributed to it and never raised as a dark-vessel candidate (Task 4.1: avoid false positives with fixed infrastructure). Real registries: EMODnet Human Activities, national platform/wind-farm cadastres. SYNTHETIC DEMO entry below.",
+  "fixed_structures": [
+    {
+      "id": "FIX-01",
+      "name": "Bajo de los Corales research platform (demo)",
+      "type": "fixed_platform",
+      "lat": 36.70,
+      "lon": -7.05,
+      "match_radius_m": 400
+    }
   ]
 }

@@ -429,13 +429,18 @@ live means replacing `src/data.py` **and** dropping the fields the demo enriches
 
 ### Roadmap
 - **Phase 1 (done):** deterministic cross-reference, two-agent pipeline, output validator,
-  patrol sequencing.
-- **Phase 2 (hackathon):** real Global Fishing Watch data (API access already granted, so
-  this starts on day one); real Natura 2000 polygons via shapely, which the current
-  dependency-free ray casting cannot handle — real boundaries have holes and multipolygons;
-  multimodal reasoning over Sentinel-1 image chips with
-  `nemotron-3-nano-omni-30b-a3b-reasoning`; self-hosted NIM on OCI so operational data stays
-  inside the authority's environment.
+  patrol sequencing, and an environmental context gate (`src/environment.py`) that scores a
+  scene's angula suitability from moon phase and spring/neap tendency — a *scanning-priority*
+  signal that ranks which nights and zones to task, never a per-vessel indicator. Actual
+  high-water timing is left as a real-data plug-in point, not faked.
+- **Phase 2 (in progress):** a SAR vessel detector (`src/vision.py`) — CA-CFAR with a Lee
+  speckle filter, numpy-only, deterministic and auditable. It turns a Sentinel-1 intensity
+  chip into vessel detections (position, coarse length, confidence) that feed the
+  AIS-matching stage and the engine. A fine-tuned CNN served via TensorRT/NIM slots in at the
+  same `detect_vessels` seam once weights exist. Still ahead: real Global Fishing Watch data;
+  real Natura 2000 polygons via shapely (the dependency-free ray casting cannot handle holes
+  and multipolygons); multimodal chip reasoning with `nemotron-3-nano-omni-30b-a3b-reasoning`;
+  self-hosted NIM on OCI so operational data stays inside the authority's environment.
 - **Phase 3:** calibrate the length-uncertainty sigma against the detection literature;
   evaluation harness measuring precision against known enforcement outcomes; recurring
   closures that cross a calendar year; domain fine-tuning with LoRA.
@@ -459,6 +464,32 @@ export WRITER_MODEL='nvidia/nemotron-3-super-120b-a12b'
 
 # 4. Tests — no API key, no network
 python src/test_caution.py
+
+# 4b. Agent evaluation harness (Phase 4.1) — red-teams the guardrail with the
+#     hallucinations an LLM produces; measures the catch rate. No key, no network.
+python src/eval_agent.py
+
+# 4c. Latency breakdown (Phase 4.2) — where the time goes. Deterministic path
+#     needs no key; add --model-repeat N to time the real (billed) model calls.
+python src/latency.py
+
+# 5. Web triage view for an officer (Streamlit). The deterministic view needs no
+#    key; the agent step uses NVIDIA_API_KEY if set.
+streamlit run src/app.py
+
+# 6. SAR vessel detector (Phase 2) — CA-CFAR on a synthetic Sentinel-1 chip
+python src/vision.py
+
+# 7. Live Global Fishing Watch SAR detections (falls back to demo without a token)
+export GFW_TOKEN='...'                    # from globalfishingwatch.org/our-apis
+python src/main.py --source gfw
+
+# 8. Data curation (Phase 1.2) — CFAR auto-candidate labels for human review
+python src/curation.py --synthetic 8 --out datasets/sar_vessels
+
+# 9. Detector training scaffold (Phase 2.1) — validate/split/emit data.yaml.
+#    Data-prep runs on CPU; --train needs a GPU + requirements-train.txt.
+python src/train_detector.py --data datasets/sar_vessels --dry-run
 ```
 
 Get an API key at [build.nvidia.com](https://build.nvidia.com). One key works for every
@@ -472,13 +503,21 @@ model — the model is chosen per request, not per key.
 ```
 src/data.py          data loading — the boundary that changes to go live
 src/geo.py           point-in-polygon and distance, dependency-free
+src/environment.py   environmental context gate (moon/tide) — scanning priority
+src/vision.py        SAR vessel detector (CA-CFAR) — the Step-3 detector
 src/analysis.py      deterministic cross-reference — the agents' tool
 src/validate.py      checks model output against the dossier; blocks on failure
 src/agents.py        Nemotron agents: analyst + writer
 src/main.py          orchestrator
-src/test_caution.py  56 tests: duty of caution, scoring invariants, validator rules
+src/app.py           Streamlit triage view for an officer
+src/test_caution.py  62 tests: duty of caution, scoring invariants, validator rules
+src/eval_agent.py    Phase 4.1 red-team harness: measures the guardrail catch rate
+src/latency.py       Phase 4.2 latency breakdown: times each pipeline stage
+src/curation.py      Phase 1.2 data curation: CFAR auto-candidate YOLO labels
+src/train_detector.py Phase 2.1 training scaffold: validate/split/data.yaml, TRT export
 src/list_models.py   helper: list models available to your API key
 demo_data/           synthetic demo data, schema mirroring the real sources
+docs/PROMPTS.md      the analyst and writer prompts, rule by rule, and what backs each
 ```
 
 ---

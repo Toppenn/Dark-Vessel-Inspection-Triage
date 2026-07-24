@@ -29,6 +29,7 @@ or deactivate a legal threshold or a seasonal closure without anyone noticing.
 
 from datetime import date, datetime
 
+import environment
 import geo
 
 # AIS applicability of the carriage requirement given the radar length
@@ -115,7 +116,31 @@ def _zones_containing(detection: dict, zones: list) -> list:
             if geo.point_in_polygon(detection["lat"], detection["lon"], z["polygon"])]
 
 
-def assess_detection(detection: dict, zones: list, config: dict, day: date) -> dict:
+# Default match radius for a charted fixed structure when it declares none.
+# A platform's safety zone is ~500 m; a lone turbine or buoy is tighter. 300 m
+# is a conservative middle that a structure can override per entry.
+DEFAULT_FIXED_MATCH_M = 300.0
+
+
+def _fixed_structure_match(detection: dict, structures: list) -> dict:
+    """Return the nearest charted fixed structure the detection falls on, or None.
+
+    Platforms, wind turbines, buoys and aquaculture cages are bright, stationary
+    radar returns that a CFAR detector (or GFW's SAR feed) reads as vessels. A
+    blob sitting on a charted structure is most parsimoniously that structure.
+    """
+    best = None
+    best_km = None
+    for s in structures:
+        radius_km = s.get("match_radius_m", DEFAULT_FIXED_MATCH_M) / 1000.0
+        d_km = geo.distance_km(detection["lat"], detection["lon"], s["lat"], s["lon"])
+        if d_km <= radius_km and (best_km is None or d_km < best_km):
+            best, best_km = s, d_km
+    return best
+
+
+def assess_detection(detection: dict, zones: list, config: dict, day: date,
+                     structures: list = None) -> dict:
     """Assess a single detection and return its record with an itemised score."""
     length_threshold = config["ais_length_threshold_m"]
     fishing_threshold = config["fishing_score_threshold"]
@@ -272,6 +297,24 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date) -> d
             "(non-observational) - corroboration only",
             weights["fishing_context"]))
 
+    # --- Fixed-infrastructure suppression (duty of caution, both directions).
+    # A detection coinciding with a charted fixed structure must not raise a
+    # dark-vessel candidate: every indicator computed above rests on reading a
+    # stationary return as a vessel, and the fishing-activity classifier firing
+    # on a platform is itself the false positive Task 4.1 names. Demote those
+    # indicators to context and drop their points — but never silently: the
+    # record is surfaced with a note so a human verifies no vessel is operating
+    # alongside the structure (a known radar-shadow concealment tactic).
+    fixed = _fixed_structure_match(detection, structures or [])
+    if fixed:
+        for ind in indicators:
+            context.append(
+                "suppressed as attributable to charted fixed structure "
+                f"{fixed.get('id', '?')}: {ind['reason']}")
+        indicators = []
+        score_items = []
+        ais_suppressed = False  # a structure is not a dark vessel; AIS is moot
+
     total = sum(points for _, points in score_items)
 
     ais_note = None
@@ -315,7 +358,14 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date) -> d
     firm = [i for i in indicators if not i.get("degraded")]
     degraded_only = len(indicators) - len(firm)
 
-    if len(firm) >= HIGH_INDICATOR_COUNT:
+    if fixed:
+        classification = "fixed_structure"
+        note = (
+            f"Coincides with charted fixed structure {fixed.get('id', '?')} "
+            f"({fixed.get('type', 'unknown')}). The radar return is attributable "
+            f"to infrastructure, so no dark-vessel candidate is raised; verify on "
+            f"inspection that no vessel is operating alongside it.")
+    elif len(firm) >= HIGH_INDICATOR_COUNT:
         classification = "high_priority"
         note = f"{len(firm)} independent indicators concur."
     elif firm:
@@ -356,6 +406,11 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date) -> d
         "classification": classification,
         "note": note,
     }
+    if fixed:
+        record["fixed_structure"] = {
+            "id": fixed.get("id"), "type": fixed.get("type"),
+            "name": fixed.get("name"),
+        }
     if ais_note:
         record["ais_note"] = ais_note
     if matched:
@@ -371,15 +426,19 @@ def analyse(zones_doc: dict, detections_doc: dict) -> dict:
     """Full cross-reference. Returns the factual dossier consumed by the agents."""
     config = zones_doc["config"]
     zones = zones_doc["zones"]
+    # Charted fixed infrastructure (platforms, wind turbines, buoys, aquaculture)
+    # is a reference layer, parallel to the zones. Absent by default, so the
+    # engine's behaviour is unchanged until the authority supplies its registry.
+    structures = zones_doc.get("fixed_structures", [])
     scene = detections_doc["scene"]
     day = _scene_date(scene)
 
-    records = [assess_detection(d, zones, config, day)
+    records = [assess_detection(d, zones, config, day, structures)
                for d in detections_doc["detections"]]
 
     order = {"high_priority": 0, "medium_priority": 1,
-             "below_candidate_threshold": 2,
-             "no_indicators": 3, "ais_not_applicable": 4}
+             "below_candidate_threshold": 2, "fixed_structure": 3,
+             "no_indicators": 4, "ais_not_applicable": 5}
     records.sort(key=lambda r: (order[r["classification"]], -r["score"]))
 
     summary = {}
@@ -415,6 +474,12 @@ def analyse(zones_doc: dict, detections_doc: dict) -> dict:
     return {
         "scene": scene,
         "analysis_date": day.isoformat(),
+        # Step 1 of the agentic loop: was this night even propitious for angula?
+        # A scanning-priority signal, never a per-vessel indicator (see
+        # environment.py). Reported so the analyst can weigh whether the scene
+        # merited attention, not to incriminate any boat.
+        "environmental_context": environment.angula_conditions(
+            scene.get("timestamp"), config),
         "study_area": config.get("study_area"),
         "output_language": config.get("output_language", "English"),
         "ais_length_threshold_m": config["ais_length_threshold_m"],
@@ -443,4 +508,6 @@ def analyse(zones_doc: dict, detections_doc: dict) -> dict:
         "inspection_candidates": candidates,
         "ais_indicator_suppressed": [r for r in records
                                      if r["ais_indicator_suppressed"]],
+        "fixed_structure_suppressed": [r for r in records
+                                       if r["classification"] == "fixed_structure"],
     }

@@ -1,1 +1,9 @@
 openai>=1.30.0
+# Frontend only (Phase 5). The deterministic engine and its tests need neither.
+streamlit>=1.36.0
+# SAR vision detector only (Phase 2, src/vision.py). The engine and its tests
+# do not import it.
+numpy>=1.24.0
+# Real polygon layers only (Natura 2000 marine / WDPA GeoJSON in src/geo.py).
+# The demo zones are simple [lat,lon] rings and need neither this nor anything.
+shapely>=2.0.0

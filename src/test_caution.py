@@ -765,6 +765,47 @@ def main() -> int:
         f"a medium-priority record dropped by the analyst is reported "
         f"({med_rec['id']})"))
 
+    # --- Fixed-infrastructure false-positive guard (Task 4.1) ---
+    print("\nFixed-infrastructure suppression: both directions of caution")
+    platform = {"id": "FIX-T", "name": "Test platform", "type": "fixed_platform",
+                "lat": 36.70, "lon": -7.05, "match_radius_m": 400}
+
+    # A dark 30 m return on the platform, inside an MPA, with a high activity
+    # score: without the guard this is a strong candidate. It must be attributed
+    # to the structure and raise no candidate.
+    on_structure = analysis.assess_detection(
+        det("T-FIX", 36.701, -7.049, 30.0, ais_matched=False, fishing=0.9,
+            gear="bottom_trawl"), zones, config, day, [platform])
+    results.append(check(
+        on_structure["classification"] == "fixed_structure",
+        "detection on a charted structure is classified fixed_structure, not a "
+        "candidate"))
+    results.append(check(
+        on_structure["potential_indicators"] == [] and on_structure["score"] == 0,
+        "a structure-attributed detection carries no indicators and scores zero"))
+    results.append(check(
+        any("suppressed as attributable to charted fixed structure" in c
+            for c in on_structure["contextual_notes"]),
+        "the suppressed indicators are surfaced as context, not dropped silently"))
+    results.append(check(
+        on_structure.get("fixed_structure", {}).get("id") == "FIX-T",
+        "the record names the structure it was attributed to"))
+
+    # Under-reporting guard: an identical dark vessel AWAY from any structure is
+    # still assessed normally — the guard must not swallow real vessels.
+    off_structure = analysis.assess_detection(
+        det("T-FIX2", 36.62, -7.15, 30.0, ais_matched=False, fishing=0.9,
+            gear="bottom_trawl"), zones, config, day, [platform])
+    results.append(check(
+        off_structure["classification"] in analysis.CANDIDATE_CLASSES,
+        "an identical dark vessel away from the structure remains a candidate"))
+    results.append(check(
+        analysis.assess_detection(
+            det("T-FIX3", 36.62, -7.15, 30.0, ais_matched=False, fishing=0.9,
+                gear="bottom_trawl"), zones, config, day, [])["classification"]
+        == off_structure["classification"],
+        "an empty registry leaves classification unchanged (default: no guard)"))
+
     passed = sum(results)
     print(f"\n{passed}/{len(results)} checks passed\n")
     return 0 if passed == len(results) else 1
