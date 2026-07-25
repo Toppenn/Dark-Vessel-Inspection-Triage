@@ -220,6 +220,36 @@ no comments, no trailing commas.
   "observed_pattern": "is there a relevant spatial or temporal clustering?",
   "overall_recommendation": "2-3 sentences for the inspection coordinator",
   "limitations": ["what this analysis cannot know"]
+}
+
+EXAMPLE OF DESIRED OUTPUT:
+{
+  "prioritised_candidates": [
+    {
+      "id": "D-010",
+      "rank": 1,
+      "reason": "High-priority candidate with two independent indicators: radar-estimated length 26.5 m exceeds AIS threshold (no AIS match) and contextual fishing indication inside integral reserve RES-03 where all gear is prohibited.",
+      "indicator_type": "ais+zone",
+      "confidence": "high"
+    },
+    {
+      "id": "D-005",
+      "rank": 2,
+      "reason": "Medium-priority candidate; AIS indicator suppressed due to length below threshold, but single zone indicator: contextual fishing indication inside integral reserve RES-03 where all gear is prohibited.",
+      "indicator_type": "zone",
+      "confidence": "medium"
+    }
+  ],
+  "ais_not_applicable": [
+    "D-005: estimated length 9.5 m is below the 15.0 m AIS carriage threshold; absence of AIS broadcast is not an indicator per Article 10(1)."
+  ],
+  "observed_pattern": "Candidates D-010 and D-005 are clustered near the Islote Sur Integral Reserve.",
+  "overall_recommendation": "Task the closest patrol unit to verify activity inside RES-03, prioritizing D-010 due to potential AIS non-compliance.",
+  "limitations": [
+    "Cannot confirm vessel flag state, actual gear deployed, or whether any AIS suppression is lawfully derogated under Article 10(2).",
+    "Radar-derived length estimates have uncertainty; true length may fall below or above the AIS thresholds.",
+    "Contextual fishing indications are non-observational and require corroboration during inspection."
+  ]
 }"""
 
 WRITER_SYSTEM = """You are the technical writer for a fisheries inspection service.
