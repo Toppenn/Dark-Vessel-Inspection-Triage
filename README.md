@@ -290,7 +290,7 @@ Detections analysed: 13
 AIS carriage threshold applied: 15.0 m (length uncertainty +/-2.0 m)
 Environmental context (waxing crescent): angula suitability OUT_OF_SEASON
   (scanning-priority signal, not a vessel indicator)
-  outside the angula campaign window (11-01 to 02-28): the fishery is closed, so
+  outside the angula campaign window (10-10 to 03-31): the fishery is closed, so
   lunar conditions do not raise scanning priority. Moon figures reported as computed.
 Active closure: Northern Fishing Ground - seasonal spawning closure (spawning season)
 Patrol base: Port of Cadiz patrol base (demo) (radius 120 km)
