@@ -215,6 +215,7 @@ The validator checks, for both the analyst and the writer:
 | An indicator written as a category label ("ais", "zone") rather than a statement | blocker |
 | Brief indicators citing none of the record's zone identifiers, figures or legal references | blocker |
 | A brief listing more indicators than the record contains (invention by addition) | blocker |
+| A regulation field restating the indicators instead of naming the provision | warning |
 | A brief stating a priority the engine did not assign (a high written up as low) | blocker |
 | A regulation carrying anchors that belong exclusively to a different detection | blocker |
 | A brief raising indicators with no caveat at all | blocker |
@@ -469,6 +470,13 @@ entirely, and stamped the AIS carriage requirement onto vessels that were plainl
 broadcasting. We did not respond by writing a longer prompt: each of those failures is now a
 deterministic rule in `validate.py` with a test that reproduces it. **Guardrails here are not
 prompt hygiene; they are the product.**
+
+**A guardrail that rejects real data is worse than the fabrication it catches.** The check on
+the analyst's prose compared its figures against the record's indicators and length only —
+so when the analyst correctly wrote "44.02 km from base", quoting a distance the dossier
+itself computes, four reports were blocked outright. The comparison now covers every figure
+the dossier legitimately holds for a record: length, distance, position, score, and its zone
+identifiers. The fabricated-length case it was written for is still caught.
 
 **Asking again beats warning about it.** The analyst's recurring failure is truncation, not
 invention: it ranks the obvious candidates and stops, dropping one to three medium-priority
