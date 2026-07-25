@@ -43,6 +43,22 @@ def top_severity(issues: list) -> str:
         return WARNING
     return CLEAN
 
+def _citation_for(record: dict) -> str:
+    """A regulation citation that fits this record's own indicators.
+
+    The regulation field names the provisions at stake; it does not restate the
+    indicators, which validate.py reports as a defect in its own right.
+    """
+    parts = []
+    if any(str(i.get("kind", "")).startswith("ais")
+           for i in record.get("potential_indicators", [])):
+        parts.append("Article 10(1), Council Regulation (EC) No 1224/2009, as "
+                     "amended by Regulation (EU) 2023/2842")
+    for indicator in record.get("potential_indicators", []):
+        zone_id = indicator.get("zone_id")
+        if zone_id and zone_id not in " ".join(parts):
+            parts.append(f"{indicator.get('zone', 'zone')} ({zone_id})")
+    return "; ".join(parts) or "none identified"
 
 # --- Correct outputs, derived from the dossier so mutations are principled ----
 
@@ -72,8 +88,10 @@ def _brief_for(record: dict) -> dict:
         "priority": "high" if record["classification"] == "high_priority" else "medium",
         "indicators": inds,
         # Derived from the record's own indicators, so it stays AIS-free for a
-        # zone-only vessel and cites the carriage rule only where the record does.
-        "regulation_concerned": "; ".join(inds) if inds else "none identified",
+        # zone-only vessel and cites the carriage rule only where the record
+        # does. It names the provisions rather than restating the indicator
+        # text, which is itself a reportable failure.
+        "regulation_concerned": _citation_for(record),
         "suggested_action": "board and verify gear and documentation on site",
         "caveat": "radar-based inference should be confirmed on inspection",
     }

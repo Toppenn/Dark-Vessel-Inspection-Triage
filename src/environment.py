@@ -52,12 +52,14 @@ _DEFAULT_DARK_ILLUMINATION = 0.25
 
 # The angula campaign is opened by each autonomous community and its dates move
 # between campaigns, so this default is a starting point, not a legal fact. It
-# follows the Cantabrian campaign for inland waters (1 November to 28 February);
-# Asturias and the Basque Country publish their own windows, the latter anchored
-# to the October and March new moons. Set config["environment"]["season"] to the
-# window published for the jurisdiction being analysed, and treat this default
-# as a placeholder in exactly the way length_sigma_m is one.
-_DEFAULT_SEASON = {"start": "11-01", "end": "02-28"}
+# follows the Cantabrian campaign (10 October to 31 March). Asturias opens on
+# 1 November and closes on the same date; the Basque Country anchors its season
+# to the October and March new moons. March is a core month in every published
+# window, so a default that ends in February would call the tail of the campaign
+# closed. Set config["environment"]["season"] to the window published for the
+# jurisdiction being analysed, and treat this default as a placeholder in
+# exactly the way length_sigma_m is one.
+_DEFAULT_SEASON = {"start": "10-10", "end": "03-31"}
 
 _PHASE_NAMES = [
     "new moon", "waxing crescent", "first quarter", "waxing gibbous",

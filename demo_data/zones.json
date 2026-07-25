@@ -27,10 +27,10 @@
     "study_area": "Gulf of Cadiz (demo)",
     "output_language": "English",
     "environment": {
-      "_season_note": "Regulatory, not astronomical: each autonomous community opens its own angula campaign and the dates move between campaigns. This window follows the Cantabrian campaign for inland waters (1 November to 28 February). Set it to the window published for the jurisdiction being analysed.",
+      "_season_note": "Regulatory, not astronomical: each autonomous community opens its own angula campaign and the dates move between campaigns. This window follows the Cantabrian campaign (10 October to 31 March); Asturias opens on 1 November and also closes on 31 March, and the Basque Country anchors its season to the October and March new moons. Set it to the window published for the jurisdiction being analysed; like length_sigma_m, this default is a placeholder, not a legal fact.",
       "season": {
-        "start": "11-01",
-        "end": "02-28"
+        "start": "10-10",
+        "end": "03-31"
       },
       "dark_illumination": 0.25
     }

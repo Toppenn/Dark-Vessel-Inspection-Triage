@@ -527,7 +527,7 @@ no equivalent band — but we would rather flag it as unresolved than defend it 
 ## Current status
 
 Working end-to-end prototype: deterministic engine, two agents on open Nemotron models, and
-a deterministic validator, with 78 checks that run without an API key or network access.
+a deterministic validator, with 79 checks that run without an API key or network access.
 `pyright` reports zero errors across `src/` and `scaffolding/`. Demo data is synthetic.
 
 **What the real source does and does not provide.** Global Fishing Watch publishes, per SAR
@@ -589,7 +589,7 @@ export ANALYST_MODEL='nvidia/nemotron-3-super-120b-a12b'
 export WRITER_MODEL='nvidia/nemotron-3-super-120b-a12b'
 
 # 4. Checks — no API key, no network
-python src/test_caution.py     # 78 checks: caution, invariants, validator rules
+python src/test_caution.py     # 79 checks: caution, invariants, validator rules
 python src/eval_agent.py       # red-teams the guardrail with real LLM failure modes
 python src/environment.py      # season gate, year-crossing window, error policy
 
@@ -626,7 +626,7 @@ src/                 the engine and the demo path
   geo.py             point-in-polygon and distance; shapely optional for GeoJSON
   data.py            data loading — the boundary that changes to go live
   main.py            orchestrator
-  test_caution.py    78 checks: duty of caution, invariants, validator rules
+  test_caution.py    79 checks: duty of caution, invariants, validator rules
   eval_agent.py      Phase 4.1 red-team harness: guardrail catch rate
   validator_llm.py   structural check on the analyst response, before the factual ones
   list_models.py     helper: list the models available to your API key
