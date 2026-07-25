@@ -215,11 +215,14 @@ The validator checks, for both the analyst and the writer:
 | An indicator written as a category label ("ais", "zone") rather than a statement | blocker |
 | Brief indicators citing none of the record's zone identifiers, figures or legal references | blocker |
 | A brief listing more indicators than the record contains (invention by addition) | blocker |
+| A brief stating a priority the engine did not assign (a high written up as low) | blocker |
+| A regulation carrying anchors that belong exclusively to a different detection | blocker |
 | A narrative claim listing a record among a priority class it does not belong to | warning |
 | A record with indicators but no regulation named, including an empty field | warning |
 | A suggested action that restates context ("40.77 km from base") instead of instructing | warning |
 | A medium-priority record with no brief | warning |
 | A medium-priority record the analyst left out of its prioritisation | warning |
+| An analyst reason citing figures or zones that do not appear in its own record | blocker |
 
 Each rule exists because a model produced that failure in a real run. Position tolerance is
 0.001° (~110 m): the model copies a coordinate rather than computing one, so the tolerance
@@ -238,7 +241,29 @@ Both are blockers, because fabricated text sits in the field an inspector reads 
 
 Making the zone identifier part of every zone indicator is what made the anchor check
 possible in any language, and it makes the indicator more precise for the inspector at the
-same time.
+same time. Anchors also accept either decimal separator, because the engine writes `15.0`
+and a Spanish brief writes `15,0`: punctuation convention is not a fidelity failure, and
+matching only the dot would have blocked faithful translations.
+
+Two of these rules exist because the guardrail was probed rather than trusted. A brief could
+state a priority the engine never assigned — a high-priority record written up as "low",
+which is under-reporting delivered in the one field an inspector uses to order the day. And
+two briefs could have their regulations swapped and pass everything, because matching on
+shared anchors is not enough: the threshold figure appears in every AIS citation, so any two
+of them always intersect. What identifies misattribution is an anchor belonging *exclusively*
+to another detection.
+
+**Known blind spots, stated rather than discovered.** Three constructions still pass that a
+reader would call wrong: a brief with no caveat at all, a caveat that contradicts its own
+record (calling a 26 m vessel sub-threshold), and a suggested action that exceeds the
+system's remit (ordering seizure rather than inspection). 
+Each needs a judgement the current rules cannot make without false positives on legitimate
+phrasing, so they are recorded here as limits rather than papered over. Two others were
+closed only after a real run exposed them: the analyst stated a length of 19 m for a 55 m
+vessel and passed clean, because nothing compared its prose against the record; and anchors
+were being lost to non-breaking hyphens, since the model writes `RES‑03` as readily as
+`RES-03`. Both are now normalised and checked. The engine itself is unaffected: 20,000
+randomised detections against the declared invariants produce no violation.
 
 ---
 
@@ -273,11 +298,11 @@ Classification summary:
                fishing vessel exceeding 15.0 m LOA, the AIS carriage and operation
                requirement is potentially concerned (Article 10(1), Council Regulation
                (EC) No 1224/2009, as amended by Regulation (EU) 2023/2842)
-    Indicator: apparent fishing activity inside integral_reserve 'Islote Sur Integral
-               Reserve' (RES-03) where all fishing gear is prohibited (activity per
+    Indicator: presence with a contextual fishing indication inside integral_reserve
+               'Islote Sur Integral Reserve' (RES-03) where all fishing gear is prohibited (activity per
                contextual classifier, non-observational)
       +40  no AIS broadcast matched while the carriage requirement is potentially engaged
-      +30  apparent fishing where all gear is prohibited (RES-03)
+      +30  contextual fishing indication where all gear is prohibited (RES-03)
 
   D-001  -> MEDIUM_PRIORITY | 1 independent indicator(s) concur | 71.04 km from base
     Pos 36.72, -7.05 | length 34.0 m | AIS: unmatched (dark) | likely gear: bottom_trawl
@@ -292,11 +317,11 @@ Classification summary:
   D-005  -> MEDIUM_PRIORITY | 1 independent indicator(s) concur | 44.02 km from base
     Pos 36.49, -6.78 | length 9.5 m | AIS: unmatched (dark) | likely gear: small_scale
     Zone: Islote Sur Integral Reserve (integral_reserve)
-    Indicator: apparent fishing activity inside integral_reserve 'Islote Sur Integral
-               Reserve' (RES-03) where all fishing gear is prohibited
+    Indicator: presence with a contextual fishing indication inside integral_reserve
+               'Islote Sur Integral Reserve' (RES-03) where all fishing gear is prohibited
     AIS note: Below the AIS carriage threshold: absence of an AIS broadcast is not an
               indicator. Other indicators, if any, remain.
-      +30  apparent fishing where all gear is prohibited (RES-03)
+      +30  contextual fishing indication where all gear is prohibited (RES-03)
 
 --- PATROL SEQUENCE (priority, then distance from base) ---
   D-010  high_priority      38.0 km  (36.44, -6.7)
@@ -347,29 +372,26 @@ of the moon alone.
 `python src/main.py`
 
 ```
-  1. D-010 [ais_and_zone, confidence high]
-     Radar-estimated length 26.5 m exceeds the 15 m AIS carriage threshold with no AIS
-     broadcast matched, and contextual classifier indicates apparent fishing activity
-     inside the Islote Sur Integral Reserve where all gear is prohibited.
-  4. D-005 [zone, confidence medium]
-     Below the AIS carriage threshold (length 9.5 m), so absence of AIS is not an
-     indicator; apparent fishing activity is indicated inside the Islote Sur Integral
-     Reserve where all gear is prohibited.
-  6. D-001 [ais, confidence medium]
-     Radar-estimated length 34.0 m exceeds the 15 m AIS carriage threshold with no AIS
-     broadcast matched; radar-inferred bottom_trawl would be prohibited in the Bajo de
-     los Corales Marine Protected Area (context only).
+  1. D-010 [ais+zone, confidence high]
+      High-priority candidate with two independent indicators: radar-estimated length
+      26.5 m exceeds AIS threshold (no AIS match) and contextual fishing indication
+      inside integral reserve RES-03 where all gear is prohibited.
+    4. D-005 [zone, confidence medium]
+      Medium-priority candidate; AIS indicator suppressed due to length below threshold,
+      but single zone indicator: contextual fishing indication inside integral reserve
+      RES-03 where all gear is prohibited.
 
-Observed pattern: High-priority detections (D-010, D-004, D-006) form a spatial cluster
-near the Islote Sur Integral Reserve. Medium-priority detections (D-001, D-002, D-005,
-D-008) show a second cluster near the Bajo de los Corales Marine Protected Area.
+  AIS not applicable (indicator suppressed):
+    - D-005: estimated length 9.5 m is below the 15.0 m AIS carriage threshold; absence
+      of AIS broadcast is not an indicator per Article 10(1).
 
-Stated limitations:
-  - Cannot verify actual gear type or fishing activity without visual boarding.
-  - Cannot confirm whether AIS switch-off notifications were filed for dark vessels.
-  - Flag State and true vessel identity remain unknown for unmatched detections.
-  - Analysis relies on radar estimates and contextual classifiers, which are indicative
-    but not conclusive.
+  Stated limitations:
+    - Cannot confirm vessel flag state, actual gear deployed, or whether any AIS
+      suppression is lawfully derogated under Article 10(2).
+    - Radar-derived length estimates have uncertainty; true length may fall below or
+      above the AIS/VMS thresholds.
+    - Contextual fishing indications are non-observational and require corroboration
+      during inspection.
 ```
 
 The agent reproduces the suppression rule in its own words and states, unprompted, the four
@@ -379,27 +401,26 @@ it is reporting.
 ### 3. Writer agent and validation
 
 ```
-  [HIGH_PRIORITY] D-006 - 37.02, -6.92
-    - gear 'bottom_trawl' prohibited in seasonal_closure 'Northern Fishing Ground -
-      seasonal spawning closure'
-    - contextual classifier indicates likely fishing activity during active closure
-      (spawning season)
-    Regulation: gear 'bottom_trawl' prohibited in seasonal_closure 'Northern Fishing
-                Ground - seasonal spawning closure'
-    Action:     Proceed to position 37.02, -6.92 and board to verify compliance with the
-                seasonal closure and the prohibited gear restriction
-    Caveat:     The vessel may be transiting through the closure area without fishing
-                activity, which would not be an infringement.
+  [HIGH] D-006 - 37.02, -6.92
+    - gear 'bottom_trawl' (fleet registry) prohibited in seasonal_closure 'Northern
+      Fishing Ground - seasonal spawning closure' (CLS-02)
+    - contextual classifier indicates likely fishing activity (non-observational)
+      during active closure (spawning season) (CLS-02)
+    Regulation: Bottom trawl prohibited in Northern Fishing Ground - seasonal spawning
+                closure (CLS-02) (active closure)
+    Action:     Board and verify gear and documentation, 78.21 km from base
+    Caveat:     The vessel may be transiting through the closure without engaging in
+                fishing activity, or the registry gear may not be currently deployed.
 
-  [MEDIUM_PRIORITY] D-005 - 36.49, -6.78
-    - apparent fishing activity inside integral_reserve 'Islote Sur Integral Reserve'
-      where all fishing gear is prohibited (activity per contextual classifier,
-      non-observational)
-    Regulation: all fishing gear is prohibited
-    Action:     Proceed to position 36.49, -6.78 and board to verify that no gear is
-                deployed, given the integral reserve prohibition
-    Caveat:     The vessel may be transiting through the reserve without fishing
-                activity, which would not constitute a violation.
+  [MEDIUM] D-005 - 36.49, -6.78
+    - presence with a contextual fishing indication inside integral_reserve 'Islote Sur
+      Integral Reserve' (RES-03) where all fishing gear is prohibited (activity per
+      contextual classifier, non-observational)
+    Regulation: All fishing gear prohibited in Islote Sur Integral Reserve (RES-03)
+    Action:     Board and verify gear and documentation, 44.02 km from base
+    Caveat:     The vessel is below the 15 m AIS carriage threshold; lack of AIS
+                broadcast is not indicative of non-compliance. The contextual fishing
+                indication inside the integral reserve may be inaccurate; verify on site.
 
 ========================================================================
 OUTPUT VALIDATION

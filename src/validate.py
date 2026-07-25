@@ -55,19 +55,27 @@ def _mentions_ais(text: str) -> bool:
 _INVARIANT_TOKEN = re.compile(
     r"[A-Z]{2,4}-\d{2,}"        # zone ids: RES-03, CLS-02, MPA-01
     r"|\d{4}/\d{4}"             # legal references: 1224/2009, 2023/2842
-                                # Figures, with either decimal separator: the engine writes 15.0 and a
-                                # Spanish brief writes 15,0. Matching only the dot would empty the
-                                # intersection for a record whose indicators are numeric, blocking a
-                                # faithful translation.
+    # Figures, with either decimal separator: the engine writes 15.0 and a
+    # Spanish brief writes 15,0. Matching only the dot would empty the
+    # intersection for a record whose indicators are numeric, blocking a
+    # faithful translation.
     r"|\d+[.,]\d+"              # figures: 22.0 / 22,0
 )
 
 
+# Models write RES\u201103 (non-breaking hyphen) as readily as RES-03, and 15,0
+# as readily as 15.0. Neither is a fidelity failure, so both are normalised to
+# the ASCII form before anything is matched or compared.
+_DASH_VARIANTS = dict.fromkeys(map(ord, "\u2010\u2011\u2012\u2013\u2014\u2015"), "-")
+
+
+def _normalise(text: str) -> str:
+    return (text or "").translate(_DASH_VARIANTS)
+
+
 def _invariant_tokens(text: str) -> set:
-    # Normalise the decimal separator so "15,0" and "15.0" are one token. A
-    # brief translated into the authority's language is still restating the
-    # record; punctuation convention is not a fidelity failure.
-    return {t.replace(",", ".") for t in _INVARIANT_TOKEN.findall(text or "")}
+    return {t.replace(",", ".")
+            for t in _INVARIANT_TOKEN.findall(_normalise(text))}
 
 
 def _records_by_id(dossier: dict) -> dict:
@@ -143,9 +151,14 @@ def validate_report(dossier: dict, report: dict) -> list:
         ais_ok = _ais_engaged(record)
         regulation = brief.get("regulation_concerned", "") or ""
         caveat = brief.get("caveat", "") or ""
-        action = str(brief.get("suggested_action", "") or "")
+        action = str(brief.get("suggested_action", "") or "").strip()
         indicators_text = " ".join(str(i) for i in brief.get("indicators", []) or [])
         has_indicators = bool(record.get("potential_indicators"))
+        # The record's own translation-invariant anchors: its zone ids, figures
+        # and legal references. Rules 8 and 9 both compare against these, so
+        # they are computed once here rather than twice below.
+        record_tokens = _invariant_tokens(" ".join(
+            i.get("reason", "") for i in record.get("potential_indicators", [])))
 
         # 3. Never invoke the carriage requirement when the record's own
         #    indicator list does not engage it — whether the vessel is
@@ -195,14 +208,51 @@ def validate_report(dossier: dict, report: dict) -> list:
             issues.append((BLOCKER, where,
                            "record has no indicators, yet a regulation is named"))
 
-        # 6c. Fidelity across languages. The brief must restate the record's
-        #     indicators rather than invent new ones, and word overlap cannot
+        # 7. The brief must state the priority the engine assigned. Rule 13
+        #    checks that a high-priority record HAS a brief; it does not check
+        #     that the brief says so. A record the engine ranked high, written
+        #     up as "low", is under-reporting delivered in the one field an
+        #     inspector uses to order the day.
+        stated = str(brief.get("priority", "")).strip().lower()
+        expected = record["classification"].replace("_priority", "").lower()
+        if stated and stated not in (expected, record["classification"].lower()):
+            issues.append((BLOCKER, where,
+                           f"the brief states priority '{stated}' but the record "
+                           f"is {record['classification']}"))
+
+        # 8. The regulation must belong to THIS record. Rule 5 only checks
+        #    that the field is not empty, and rule 9 checks the indicators,
+        #     not this field — so two briefs could have their regulations
+        #     swapped and pass both. Citing a provision that concerns another
+        #     vessel is the exact error this system exists to prevent.
+        #
+        #     Matching on shared anchors is not enough: the threshold figure
+        #     appears in every AIS indicator, so any two AIS citations always
+        #     intersect. What identifies misattribution is the presence of an
+        #     anchor that belongs exclusively to a DIFFERENT detection — this
+        #     vessel's brief citing that vessel's length or zone.
+        cited_tokens = _invariant_tokens(regulation)
+        foreign = {}
+        for other_id, other in records.items():
+            if other_id == vessel_id:
+                continue
+            exclusive = _invariant_tokens(" ".join(
+                i.get("reason", "") for i in
+                other.get("potential_indicators", []))) - record_tokens
+            for token in cited_tokens & exclusive:
+                foreign[token] = other_id
+        if foreign:
+            detail = ", ".join(f"{t} ({i})" for t, i in sorted(foreign.items()))
+            issues.append((BLOCKER, where,
+                           f"the regulation cited carries anchors belonging to "
+                           f"another detection: {detail}"))
+
+        # 9. Fidelity across languages. The brief must restate the record's
+        #    indicators rather than invent new ones, and word overlap cannot
         #     show that once the brief is a translation. Tokens that translation
         #     leaves untouched can: zone identifiers, figures and legal
         #     references. Checked over the brief as a whole, because a single
         #     indicator may legitimately carry none of them while another does.
-        record_tokens = _invariant_tokens(" ".join(
-            i.get("reason", "") for i in record.get("potential_indicators", [])))
         brief_tokens = _invariant_tokens(" ".join(
             str(x) for x in (brief.get("indicators") or [])))
         if record_tokens and not (brief_tokens & record_tokens):
@@ -211,8 +261,8 @@ def validate_report(dossier: dict, report: dict) -> list:
                            "identifiers, figures or legal references that "
                            "appear in the record's own indicators"))
 
-        # 6d. Rule 6c bounds substitution, not addition: a brief that keeps
-        #     the record's anchors and appends an invented indicator satisfies
+        # 10. Rule 9 bounds substitution, not addition: a brief that keeps
+        #    the record's anchors and appends an invented indicator satisfies
         #     it. Addition is the likelier failure — models embellish more often
         #     than they replace — and in an inspection brief an added line is a
         #     fresh accusation nobody observed. A brief may legitimately
@@ -227,18 +277,17 @@ def validate_report(dossier: dict, report: dict) -> list:
                            f"{record_indicator_count}: the writer has added an "
                            f"indicator that no fact supports"))
 
-        # 6a. The suggested action must be an instruction. A model that writes
-        #     only a distance ("40.77 km from base") has restated context; an
+        # 11. The suggested action must be an instruction. A model that writes
+        #    only a distance ("40.77 km from base") has restated context; an
         #     inspector cannot act on it.
-        action = str(brief.get("suggested_action", "") or "").strip()
         if not action or len(action) < 15 or re.match(
                 r"^[\d.,]+\s*(km|nm|miles)\b", action, re.IGNORECASE):
             issues.append((WARNING, where,
                            f"suggested action '{action}' states context rather "
                            f"than an instruction the inspector can follow"))
 
-        # 6b. The brief's indicators must restate the record's indicators, not
-        #     the analyst's shorthand labels. A model that writes "ais" or
+        # 12. The brief's indicators must restate the record's indicators, not
+        #    the analyst's shorthand labels. A model that writes "ais" or
         #     "zone" has copied a category name; an inspector cannot act on it.
         brief_indicators = brief.get("indicators") or []
         record_indicator_text = " ".join(
@@ -259,7 +308,7 @@ def validate_report(dossier: dict, report: dict) -> list:
                                "indicator text shares no wording with the "
                                "record's own indicators"))
 
-    # 7. The duty runs in both directions: every high-priority record in the
+    # 13. The duty runs in both directions: every high-priority record in the
     #    dossier must have a brief. Silent omission is a blocker.
     for record in dossier.get("records", []):
         classification = record["classification"]
@@ -273,7 +322,7 @@ def validate_report(dossier: dict, report: dict) -> list:
                        f"duty of caution runs in both directions and the report "
                        f"must not under-report"))
 
-    # 8. Free prose must not reintroduce vessels whose AIS indicator is
+    # 14. Free prose must not reintroduce vessels whose AIS indicator is
     #    suppressed and that have no other indicators.
     prose_fields = ["executive_summary", "methodological_note",
                     "human_decision_required"]
@@ -369,6 +418,27 @@ def validate_prioritisation(dossier: dict, prioritisation: dict) -> list:
                            f"prioritised id is not an inspection candidate "
                            f"(classification: "
                            f"{records[vessel_id]['classification']})"))
+
+    # The analyst's reason text is prose about a record, and until now nothing
+    # compared it with that record. A real run stated "19.0 m" for a 55 m vessel
+    # — the very figure that decides whether the carriage threshold applies —
+    # and passed clean. Same anchor test as the writer's indicators: if the
+    # reason carries figures or zone ids at all, at least one must be the
+    # record's own. Reasons that paraphrase without citing anything are left
+    # alone, because they assert no figure to be wrong about.
+    for candidate in prioritisation.get("prioritised_candidates", []) or []:
+        record = records.get(candidate.get("id"))
+        if record is None:
+            continue
+        cited = _invariant_tokens(str(candidate.get("reason", "")))
+        own = _invariant_tokens(" ".join(
+            i.get("reason", "") for i in record.get("potential_indicators", [])))
+        own |= {str(record.get("estimated_length_m", ""))}
+        if cited and own and not (cited & own):
+            issues.append((BLOCKER, f"prioritised {candidate.get('id')}",
+                           f"the reason cites {sorted(cited)}, none of which "
+                           f"appear in this record: the analyst has stated a "
+                           f"figure or zone the dossier does not support"))
 
     prose = " ".join([str(prioritisation.get("observed_pattern", "")),
                       str(prioritisation.get("overall_recommendation", ""))])

@@ -217,7 +217,11 @@ def build_cases(dossier: dict) -> list:
     #     rather than blocking. (Adding any indicator would, correctly, block as
     #     fabrication, since the record has none.)
     if fixed:
-        rep("brief_for_fixed_structure", "over-report", WARNING,
+        # Blocker, not a warning: briefing a charted platform as a priority
+        # vessel asserts a conclusion the engine did not reach, and it sends a
+        # patrol to a lump of steel. Rule 7 catches the priority label; rule 2
+        # catches the brief existing at all.
+        rep("brief_for_fixed_structure", "over-report", BLOCKER,
             lambda r: r["inspection_briefs"].append({
                 "id": fixed["id"],
                 "position": f"{fixed['position']['lat']}, {fixed['position']['lon']}",
