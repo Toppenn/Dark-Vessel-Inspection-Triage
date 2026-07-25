@@ -281,7 +281,10 @@ CAVEATS:
 
 SUGGESTED ACTION: an instruction the inspector can follow ("board and verify
 gear and documentation"), never a restatement of context. A distance on its own
-is not an action; the distance already appears in the dossier.
+is not an action. 
+STRICT SCOPE LIMIT: Actions must remain strictly within administrative and
+inspection authority. NEVER suggest judicial or enforcement actions such as
+"seize", "confiscate", "arrest", or "impound".
 
 REGULATION FIELD: never leave it empty. If the record has indicators, name the
 provision each one concerns. Only an empty indicator list may produce
