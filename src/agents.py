@@ -17,6 +17,8 @@ import json
 import os
 import re
 
+from src.validator_llm import validate_analyst_output
+
 from openai import OpenAI
 
 BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
@@ -389,7 +391,18 @@ def prioritise(dossier: dict) -> dict:
     """Agent 1: prioritise candidates and reason over the scene as a whole."""
     user = ("Factual dossier:\n\n"
             + json.dumps(_agent_payload(dossier), ensure_ascii=False, indent=2))
-    return _complete_json(ANALYST_MODEL, ANALYST_SYSTEM, user)
+    
+    # Complete the completion call to receive the structured analyst response
+    data = _complete_json(ANALYST_MODEL, ANALYST_SYSTEM, user)
+    
+    # Validate structure and guard against hallucinated candidate IDs
+    errors = validate_analyst_output(data, dossier)
+    if errors:
+        raise ValueError(
+            "Analyst output failed validation:\n" + "\n".join(f"- {e}" for e in errors)
+        )
+        
+    return data
 
 
 def write_briefs(dossier: dict, prioritisation: dict) -> dict:
