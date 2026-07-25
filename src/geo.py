@@ -14,24 +14,27 @@ Two polygon representations are accepted, and the demo never needs a dependency:
 import math
 
 
-def _shapely_shape():
-    """Return shapely's ``shape`` builder, or raise a clear install hint.
+# shapely is imported once, lazily, and the outcome cached here: either the
+# builder itself or the ImportError explaining its absence. A module-level cache
+# is clearer than stashing attributes on the function object, and it type-checks.
+_SHAPELY_SHAPE = None
 
-    Cached on the function object so the import is attempted once.
-    """
-    if not hasattr(_shapely_shape, "_fn"):
+
+def _shapely_shape():
+    """Return shapely's ``shape`` builder, or raise a clear install hint."""
+    global _SHAPELY_SHAPE
+    if _SHAPELY_SHAPE is None:
         try:
             from shapely.geometry import shape
-            _shapely_shape._fn = shape
+            _SHAPELY_SHAPE = shape
         except ImportError as exc:  # pragma: no cover - exercised only w/o shapely
-            _shapely_shape._fn = exc
-    fn = _shapely_shape._fn
-    if isinstance(fn, ImportError):
+            _SHAPELY_SHAPE = exc
+    if isinstance(_SHAPELY_SHAPE, ImportError):
         raise RuntimeError(
             "This zone uses a GeoJSON geometry (real Natura 2000 / WDPA data), "
             "which needs shapely. Install it with: pip install shapely"
-        ) from fn
-    return fn
+        ) from _SHAPELY_SHAPE
+    return _SHAPELY_SHAPE
 
 
 def point_in_polygon(lat: float, lon: float, polygon) -> bool:

@@ -1,7 +1,7 @@
 # Task 2.1 training only — heavy, GPU-specific, deliberately OUT of the core
 # requirements.txt so the engine, tests, harnesses and curation stay installable
 # in ten seconds on CPU. Install this only on a GPU host to run the real
-# fine-tune and TensorRT export (src/train_detector.py --train).
+# fine-tune and TensorRT export (scaffolding/train_detector.py --train).
 ultralytics>=8.3.0
 # TensorRT: install the build matching your CUDA/driver, or run inside NVIDIA's
 # PyTorch NGC container (nvcr.io/nvidia/pytorch), which ships it. `yolo export

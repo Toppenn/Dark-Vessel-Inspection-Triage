@@ -55,12 +55,19 @@ def _mentions_ais(text: str) -> bool:
 _INVARIANT_TOKEN = re.compile(
     r"[A-Z]{2,4}-\d{2,}"        # zone ids: RES-03, CLS-02, MPA-01
     r"|\d{4}/\d{4}"             # legal references: 1224/2009, 2023/2842
-    r"|\d+\.\d+"                # figures: 22.0, 15.0
+                                # Figures, with either decimal separator: the engine writes 15.0 and a
+                                # Spanish brief writes 15,0. Matching only the dot would empty the
+                                # intersection for a record whose indicators are numeric, blocking a
+                                # faithful translation.
+    r"|\d+[.,]\d+"              # figures: 22.0 / 22,0
 )
 
 
 def _invariant_tokens(text: str) -> set:
-    return set(_INVARIANT_TOKEN.findall(text or ""))
+    # Normalise the decimal separator so "15,0" and "15.0" are one token. A
+    # brief translated into the authority's language is still restating the
+    # record; punctuation convention is not a fidelity failure.
+    return {t.replace(",", ".") for t in _INVARIANT_TOKEN.findall(text or "")}
 
 
 def _records_by_id(dossier: dict) -> dict:

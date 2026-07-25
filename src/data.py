@@ -13,7 +13,7 @@ Planned real sources:
   zones      -> Natura 2000 marine, WDPA, marine reserves of fishing interest,
                 seasonal closures published in official bulletins
   raw imagery -> Copernicus Data Space Ecosystem (Sentinel-1), fed to
-                src/vision.py if we run our own detector instead of GFW's
+                scaffolding/vision.py if we run our own detector instead of GFW's
 """
 
 import json

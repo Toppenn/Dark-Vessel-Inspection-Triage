@@ -17,15 +17,23 @@ model choice (ANALYST_MODEL / WRITER_MODEL — nano vs super vs ultra) and the
 MAX_TOKENS ceiling; the two calls are inherently sequential, because the writer
 consumes the analyst's output.
 
-    python src/latency.py                 # deterministic path only
-    python src/latency.py --model-repeat 3   # + real model calls (needs a key)
+    python scaffolding/latency.py                 # deterministic path only
+    python scaffolding/latency.py --model-repeat 3   # + real model calls (needs a key)
 """
 
 import argparse
 import os
 import statistics
-import sys
 import time
+
+# This module is scaffolding: it lives outside src/ because the demo path does
+# not exercise it. The engine it reads from does live in src/, so put that on
+# the path first. Every scaffolding module that imports the core does it this
+# same way.
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import analysis
 import data
@@ -43,8 +51,8 @@ def _timed(fn, repeat: int) -> float:
     return statistics.median(samples)
 
 
-def deterministic_breakdown(repeat: int) -> dict:
-    """Time the no-model path. Returns {stage: median_ms}."""
+def deterministic_breakdown(repeat: int) -> tuple:
+    """Time the no-model path. Returns ({stage: median_ms}, dossier)."""
     zones_doc = data.load_zones()
     detections_doc = data.load_detections()
     dossier = analysis.analyse(zones_doc, detections_doc)

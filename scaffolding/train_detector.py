@@ -17,9 +17,9 @@ What is DEFERRED to real hardware (a `ponytail:` ceiling, not a stub that lies):
     if ultralytics is installed and the data is present; otherwise it fails with
     an instruction. It never prints an accuracy it did not measure.
 
-    python src/train_detector.py                          # self-check
-    python src/train_detector.py --data datasets/sar_vessels --dry-run
-    python src/train_detector.py --data datasets/sar_vessels --train   # needs GPU
+    python scaffolding/train_detector.py                          # self-check
+    python scaffolding/train_detector.py --data datasets/sar_vessels --dry-run
+    python scaffolding/train_detector.py --data datasets/sar_vessels --train   # needs GPU
 """
 
 import argparse
@@ -65,7 +65,7 @@ def prepare(data_dir: Path, val_fraction: float = 0.2, seed: int = 0) -> dict:
     if not img_dir.is_dir() or not lbl_dir.is_dir():
         raise FileNotFoundError(
             f"{data_dir} has no images/ and labels/. Run curation first:\n"
-            f"  python src/curation.py --synthetic 8 --out {data_dir}")
+            f"  python scaffolding/curation.py --synthetic 8 --out {data_dir}")
 
     images = sorted(img_dir.glob("*.npy"))
     if not images:

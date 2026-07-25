@@ -27,17 +27,21 @@ inspection go**.
 Given radar vessel detections for a sea area and the applicable regulatory layers, the
 system:
 
-1. **Cross-references** every detection against AIS matching, marine protected area
-   boundaries, seasonal closures and permitted fishing gear.
-2. **Scores** each detection with a fully itemised breakdown — every point awarded has a
+1. **Gates the scene** on season, moon and tide before anything else — a
+   scanning-priority signal that ranks which nights are worth tasking and never touches a
+   vessel score.
+2. **Cross-references** every detection against AIS matching, marine protected area
+   boundaries, seasonal closures, permitted fishing gear, and a registry of charted fixed
+   structures, so a platform is not mistaken for a boat.
+3. **Scores** each detection with a fully itemised breakdown — every point awarded has a
    stated reason. No black box.
-3. **Sequences** the resulting candidates against a patrol base and a reachable radius,
+4. **Sequences** the resulting candidates against a patrol base and a reachable radius,
    because a target that scores highly 200 km away is not the next inspection.
-4. **Reasons** over the scene as a whole: ranks candidates, identifies spatial clustering,
+5. **Reasons** over the scene as a whole: ranks candidates, identifies spatial clustering,
    and declares what the analysis cannot know.
-5. **Drafts inspection briefs** stating the indicators, the regulation concerned, the
+6. **Drafts inspection briefs** stating the indicators, the regulation concerned, the
    suggested action, and the innocent explanation that could account for the indicator.
-6. **Validates its own output** against the factual dossier, and refuses to issue a report
+7. **Validates its own output** against the factual dossier, and refuses to issue a report
    that fails.
 
 ---
@@ -74,6 +78,42 @@ classifier at 0.05 — purely because it had a purse seine on its licence. The s
 asserting something the classifier had explicitly not said. That branch is gone, and a
 regression test now holds the line in both directions: the compliant transit raises no
 indicator, and a vessel actually fishing in the same reserve still does.
+
+### A charted structure is not a dark vessel
+
+A fixed platform returns a bright, persistent radar signature and broadcasts no AIS, which
+is exactly the shape of a dark-vessel candidate. Attributing it to a vessel would put a
+patrol on a heading toward a lump of steel that has been there for years.
+
+Detections that coincide with a charted structure in the registry are therefore classified
+`fixed_structure`, score zero, and raise no candidate. The record names the structure it was
+attributed to, and the indicators it *would* have raised are surfaced as context rather than
+dropped, so the reader can see what the guard suppressed and disagree with it. An identical
+dark vessel away from the structure remains a candidate, and an empty registry leaves
+classification untouched — the guard only ever subtracts, and only where the chart says so.
+
+### Season before moon
+
+The environmental gate (`src/environment.py`) ranks which nights are worth tasking for
+angula: dark nights around spring tides, in season. It is a *scanning-priority* signal
+reported at scene level, never a per-vessel indicator, and a regression test asserts that
+swinging its label from `out_of_season` to `high` moves no vessel score at all.
+
+Season comes first, because it is the filter anyone in the sector applies before looking at
+the moon. An earlier version modelled the lunar cycle correctly and ignored the campaign, so
+a July new moon — months after the fishery closes — was reported as peak conditions. The
+window is configuration, not astronomy: each autonomous community opens its own campaign and
+the dates move, so it is set per jurisdiction and the shipped default is a placeholder in
+exactly the way `length_sigma_m` is one. A window that crosses the year boundary is handled
+as such; a naive `start <= today <= end` would exclude December and January, which is most
+of the season.
+
+**And the sensor that would see an angula boat is not this one.** Angula is fished with
+cedazo from the shore or from small craft inside estuaries, far below Sentinel-1's ~15 m
+detection floor, while the detections here are 9-31 m vessels in open water. The gate
+prioritises estuary tasking with whatever sensor is appropriate; nothing in it should be
+read as implying that an angula boat would appear in a SAR scene. That limit is written into
+the module rather than left for the framing to obscure.
 
 ### The legal basis, and its limits
 
@@ -126,11 +166,15 @@ These properties are tested, not merely documented — see `src/test_caution.py`
 ## Architecture
 
 ```
+scene timestamp ────────────> environmental gate ──> scanning priority (scene level)
+                              environment.py         never touches a vessel score
+
 GFW / Sentinel-1 detections ─┐
-Marine protected areas       ├─> deterministic ──> analyst ──> writer ──> validator ──> briefs
-Seasonal closures            │   cross-reference   (Nemotron)  (Nemotron)  analysis.py
-Gear restrictions           ─┘   analysis.py                               validate.py
-Patrol base                      auditable, no LLM                         auditable, no LLM
+Marine protected areas       │
+Seasonal closures            ├─> deterministic ──> analyst ──> writer ──> validator ──> briefs
+Gear restrictions            │   cross-reference   (Nemotron)  (Nemotron)  validate.py
+Charted fixed structures     │   analysis.py
+Patrol base                 ─┘   auditable, no LLM                         auditable, no LLM
 ```
 
 **Positions, geometry and scores are computed deterministically and are never generated by
@@ -205,46 +249,51 @@ same time.
 `python src/main.py --cross-reference-only`
 
 ```
-Detections analysed: 12
+Detections analysed: 13
 AIS carriage threshold applied: 15.0 m (length uncertainty +/-2.0 m)
+Environmental context (waxing crescent): angula suitability OUT_OF_SEASON
+  (scanning-priority signal, not a vessel indicator)
+  outside the angula campaign window (11-01 to 02-28): the fishery is closed, so
+  lunar conditions do not raise scanning priority. Moon figures reported as computed.
 Active closure: Northern Fishing Ground - seasonal spawning closure (spawning season)
 Patrol base: Port of Cadiz patrol base (demo) (radius 120 km)
 
 Classification summary:
   high_priority      3
   medium_priority    4
+  fixed_structure    1
   no_indicators      3
   ais_not_applicable 2
 
   D-010  -> HIGH_PRIORITY | 2 independent indicator(s) concur | 38.0 km from base
     Pos 36.44, -6.7 | length 26.5 m | AIS: unmatched (dark) | likely gear: bottom_trawl
     Zone: Islote Sur Integral Reserve (integral_reserve)
-    Indicator: radar-estimated length 26.5 m is above the 15.0 m threshold beyond sensor
-               uncertainty and no AIS broadcast was matched; if this is a Union fishing
-               vessel exceeding 15.0 m LOA, the AIS carriage and operation requirement is
-               potentially concerned (Article 10(1), Council Regulation (EC) No 1224/2009,
-               as amended by Regulation (EU) 2023/2842)
+    Indicator: radar-estimated length 26.5 m is above the 15.0 m threshold beyond
+               sensor uncertainty and no AIS broadcast was matched; if this is a Union
+               fishing vessel exceeding 15.0 m LOA, the AIS carriage and operation
+               requirement is potentially concerned (Article 10(1), Council Regulation
+               (EC) No 1224/2009, as amended by Regulation (EU) 2023/2842)
     Indicator: apparent fishing activity inside integral_reserve 'Islote Sur Integral
-               Reserve' where all fishing gear is prohibited (activity per contextual
-               classifier, non-observational)
+               Reserve' (RES-03) where all fishing gear is prohibited (activity per
+               contextual classifier, non-observational)
       +40  no AIS broadcast matched while the carriage requirement is potentially engaged
       +30  apparent fishing where all gear is prohibited (RES-03)
 
   D-001  -> MEDIUM_PRIORITY | 1 independent indicator(s) concur | 71.04 km from base
     Pos 36.72, -7.05 | length 34.0 m | AIS: unmatched (dark) | likely gear: bottom_trawl
     Zone: Bajo de los Corales Marine Protected Area (marine_protected_area)
-    Indicator: radar-estimated length 34.0 m is above the 15.0 m threshold beyond sensor
-               uncertainty and no AIS broadcast was matched; ...
+    Indicator: radar-estimated length 34.0 m is above the 15.0 m threshold beyond
+               sensor uncertainty and no AIS broadcast was matched; ...
     Context (not an indicator): radar-inferred gear class 'bottom_trawl' would be
                prohibited in marine_protected_area 'Bajo de los Corales Marine Protected
-               Area', but gear inference for an unmatched detection is enrichment, not
-               observation - context only, to be verified on inspection
+               Area' (MPA-01), but gear inference for an unmatched detection is
+               enrichment, not observation - context only, to be verified on inspection
 
   D-005  -> MEDIUM_PRIORITY | 1 independent indicator(s) concur | 44.02 km from base
     Pos 36.49, -6.78 | length 9.5 m | AIS: unmatched (dark) | likely gear: small_scale
     Zone: Islote Sur Integral Reserve (integral_reserve)
     Indicator: apparent fishing activity inside integral_reserve 'Islote Sur Integral
-               Reserve' where all fishing gear is prohibited
+               Reserve' (RES-03) where all fishing gear is prohibited
     AIS note: Below the AIS carriage threshold: absence of an AIS broadcast is not an
               indicator. Other indicators, if any, remain.
       +30  apparent fishing where all gear is prohibited (RES-03)
@@ -259,26 +308,39 @@ Classification summary:
   D-008  medium_priority  102.56 km  (36.3, -7.4)
 
 --- BELOW CANDIDATE THRESHOLD (listed, not actioned) ---
+  D-013 (fixed_structure, score 0): no indicators
   D-003 (no_indicators, score 0): no indicators
   D-009 (no_indicators, score 0): no indicators
   D-012 (no_indicators, score 0): no indicators
 
 --- AIS INDICATOR SUPPRESSED (duty of caution) ---
-  D-005 (medium_priority): Below the AIS carriage threshold: absence of an AIS broadcast
-        is not an indicator. Other indicators, if any, remain.
-  D-007 (ais_not_applicable): ... The estimated length is within sensor uncertainty of the
-        12.0 m VMS threshold, so a VMS cross-check may or may not apply; the authority can
-        settle this from its own records.
+  D-005 (medium_priority): Below the AIS carriage threshold: absence of an AIS
+        broadcast is not an indicator. Other indicators, if any, remain.
+  D-007 (ais_not_applicable): ... The estimated length is within sensor uncertainty of
+        the 12.0 m VMS threshold, so a VMS cross-check may or may not apply; the
+        authority can settle this from its own records.
+
+--- ATTRIBUTED TO CHARTED FIXED INFRASTRUCTURE (false-positive guard, duty of caution) ---
+  D-013 -> FIX-01 (fixed_platform): Coincides with charted fixed structure FIX-01
+        (fixed_platform). The radar return is attributable to infrastructure, so no
+        dark-vessel candidate is raised; verify on inspection that no vessel is
+        operating alongside it.
 ```
 
-Four things to read here. **D-005** is below the threshold, has its AIS indicator suppressed
-and explained, and is still a candidate on a zone indicator — the duty of caution removes one
-piece of evidence, not the vessel. **D-001** shows the gear class demoted to *context, not an
-indicator*: gear cannot be inferred from a radar return on an unmatched detection, so it does
-not score. **D-003, D-009 and D-012** are printed even though nothing will be done about
-them, because a record can carry an indicator that cites a legal provision and still fall
-below the candidate threshold; reporting only what we act on would hide that. And the patrol
-sequence reorders the list by what a patrol vessel can actually reach.
+Five things to read here. **D-005** is below the threshold, has its AIS indicator
+suppressed and explained, and is still a candidate on a zone indicator — the duty of caution
+removes one piece of evidence, not the vessel. **D-001** shows the gear class demoted to
+*context, not an indicator*: gear cannot be inferred from a radar return on an unmatched
+detection, so it does not score. **D-013** is a charted platform, not a boat: the engine
+attributes the return to infrastructure, raises no candidate, and says which structure and
+why. **D-003, D-009 and D-012** are printed even though nothing will be done about them,
+because reporting only what we act on would hide from the reader that they were considered.
+And the patrol sequence reorders the list by what a patrol vessel can actually reach.
+
+The environmental line at the top is the scanning-priority gate, and the demo scene shows it
+doing the thing it exists for: 18 July is a dark waxing-crescent night, but the angula
+campaign is closed, so the label is `OUT_OF_SEASON` rather than a high score on the strength
+of the moon alone.
 
 ### 2. Analyst agent
 
@@ -408,8 +470,8 @@ no equivalent band — but we would rather flag it as unresolved than defend it 
 ## Current status
 
 Working end-to-end prototype: deterministic engine, two agents on open Nemotron models, and
-a deterministic validator, with 56 tests that run without an API key or network access.
-Demo data is synthetic.
+a deterministic validator, with 67 checks that run without an API key or network access.
+`pyright` reports zero errors across `src/` and `scaffolding/`. Demo data is synthetic.
 
 **What the real source does and does not provide.** Global Fishing Watch publishes, per SAR
 detection, an estimated length, AIS matching status and model scores. It does not publish
@@ -426,24 +488,31 @@ live means replacing `src/data.py` **and** dropping the fields the demo enriches
 | Raw imagery (phase 2) | Copernicus Data Space Ecosystem (Sentinel-1) |
 | Protected areas | Natura 2000 marine, WDPA, marine reserves of fishing interest |
 | Seasonal closures | Official bulletins |
+| Charted fixed structures | National hydrographic charts / offshore infrastructure registries |
+| Angula campaign window | The order published by the relevant autonomous community |
 
 ### Roadmap
 - **Phase 1 (done):** deterministic cross-reference, two-agent pipeline, output validator,
-  patrol sequencing, and an environmental context gate (`src/environment.py`) that scores a
-  scene's angula suitability from moon phase and spring/neap tendency — a *scanning-priority*
-  signal that ranks which nights and zones to task, never a per-vessel indicator. Actual
-  high-water timing is left as a real-data plug-in point, not faked.
-- **Phase 2 (in progress):** a SAR vessel detector (`src/vision.py`) — CA-CFAR with a Lee
-  speckle filter, numpy-only, deterministic and auditable. It turns a Sentinel-1 intensity
-  chip into vessel detections (position, coarse length, confidence) that feed the
-  AIS-matching stage and the engine. A fine-tuned CNN served via TensorRT/NIM slots in at the
-  same `detect_vessels` seam once weights exist. Still ahead: real Global Fishing Watch data;
-  real Natura 2000 polygons via shapely (the dependency-free ray casting cannot handle holes
-  and multipolygons); multimodal chip reasoning with `nemotron-3-nano-omni-30b-a3b-reasoning`;
-  self-hosted NIM on OCI so operational data stays inside the authority's environment.
-- **Phase 3:** calibrate the length-uncertainty sigma against the detection literature;
-  evaluation harness measuring precision against known enforcement outcomes; recurring
-  closures that cross a calendar year; domain fine-tuning with LoRA.
+  patrol sequencing, the fixed-infrastructure guard, and the environmental gate
+  (`src/environment.py`) — season, moon phase and spring/neap tendency as a
+  *scanning-priority* signal that never touches a vessel score. High-water timing is left as
+  a real-data plug-in point, not faked.
+- **Phase 2 (in progress):** a SAR vessel detector (`scaffolding/vision.py`) — CA-CFAR with a
+  Lee speckle filter, numpy-only, deterministic and auditable. It turns a Sentinel-1
+  intensity chip into detections (position, coarse length, confidence) that feed the
+  AIS-matching stage. A fine-tuned CNN served via TensorRT/NIM slots into the same
+  `detect_vessels` seam once weights exist — there is no fake YOLO standing in for it. Still
+  ahead: real Global Fishing Watch data; real Natura 2000 polygons via shapely (the
+  dependency-free ray casting cannot handle holes and multipolygons); multimodal chip
+  reasoning with `nemotron-3-nano-omni-30b-a3b-reasoning`; self-hosted NIM on OCI so
+  operational data stays inside the authority's environment.
+- **Phase 3:** calibrate the length-uncertainty sigma against the detection literature and
+  the angula season window against the campaign published for the jurisdiction; an evaluation
+  harness measuring precision against known enforcement outcomes; recurring closures that
+  cross a calendar year; domain fine-tuning with LoRA.
+
+`docs/CLOSING_REPORT.md` carries the phase-by-phase status, the verification table and the
+deliberate ceilings — what does not run here, and why it is not pretended to.
 
 ---
 
@@ -462,34 +531,25 @@ python src/main.py
 export ANALYST_MODEL='nvidia/nemotron-3-super-120b-a12b'
 export WRITER_MODEL='nvidia/nemotron-3-super-120b-a12b'
 
-# 4. Tests — no API key, no network
-python src/test_caution.py
+# 4. Checks — no API key, no network
+python src/test_caution.py     # 67 checks: caution, invariants, validator rules
+python src/eval_agent.py       # red-teams the guardrail with real LLM failure modes
+python src/environment.py      # season gate, year-crossing window, error policy
 
-# 4b. Agent evaluation harness (Phase 4.1) — red-teams the guardrail with the
-#     hallucinations an LLM produces; measures the catch rate. No key, no network.
-python src/eval_agent.py
-
-# 4c. Latency breakdown (Phase 4.2) — where the time goes. Deterministic path
-#     needs no key; add --model-repeat N to time the real (billed) model calls.
-python src/latency.py
-
-# 5. Web triage view for an officer (Streamlit). The deterministic view needs no
-#    key; the agent step uses NVIDIA_API_KEY if set.
-streamlit run src/app.py
-
-# 6. SAR vessel detector (Phase 2) — CA-CFAR on a synthetic Sentinel-1 chip
-python src/vision.py
-
-# 7. Live Global Fishing Watch SAR detections (falls back to demo without a token)
+# 5. Live Global Fishing Watch SAR detections (falls back to demo without a token)
 export GFW_TOKEN='...'                    # from globalfishingwatch.org/our-apis
 python src/main.py --source gfw
 
-# 8. Data curation (Phase 1.2) — CFAR auto-candidate labels for human review
-python src/curation.py --synthetic 8 --out datasets/sar_vessels
+# --- scaffolding: built and self-checking, outside the demo path ---
 
-# 9. Detector training scaffold (Phase 2.1) — validate/split/emit data.yaml.
-#    Data-prep runs on CPU; --train needs a GPU + requirements-train.txt.
-python src/train_detector.py --data datasets/sar_vessels --dry-run
+python scaffolding/vision.py              # CA-CFAR on a synthetic Sentinel-1 chip
+python scaffolding/latency.py             # where the time goes; --model-repeat N to bill
+streamlit run scaffolding/app.py          # officer triage view (needs streamlit)
+
+# Phase 1.2 / 2.1: curation and the training scaffold. Data prep runs on CPU;
+# --train needs a GPU and requirements-train.txt.
+python scaffolding/curation.py --synthetic 8 --out datasets/sar_vessels
+python scaffolding/train_detector.py --data datasets/sar_vessels --dry-run
 ```
 
 Get an API key at [build.nvidia.com](https://build.nvidia.com). One key works for every
@@ -501,24 +561,36 @@ model — the model is chosen per request, not per key.
 ## Repository layout
 
 ```
-src/data.py          data loading — the boundary that changes to go live
-src/geo.py           point-in-polygon and distance, dependency-free
-src/environment.py   environmental context gate (moon/tide) — scanning priority
-src/vision.py        SAR vessel detector (CA-CFAR) — the Step-3 detector
-src/analysis.py      deterministic cross-reference — the agents' tool
-src/validate.py      checks model output against the dossier; blocks on failure
-src/agents.py        Nemotron agents: analyst + writer
-src/main.py          orchestrator
-src/app.py           Streamlit triage view for an officer
-src/test_caution.py  62 tests: duty of caution, scoring invariants, validator rules
-src/eval_agent.py    Phase 4.1 red-team harness: measures the guardrail catch rate
-src/latency.py       Phase 4.2 latency breakdown: times each pipeline stage
-src/curation.py      Phase 1.2 data curation: CFAR auto-candidate YOLO labels
-src/train_detector.py Phase 2.1 training scaffold: validate/split/data.yaml, TRT export
-src/list_models.py   helper: list models available to your API key
+src/                 the engine and the demo path
+  analysis.py        deterministic cross-reference — the agents' tool
+  validate.py        checks model output against the dossier; blocks on failure
+  agents.py          Nemotron agents: analyst + writer
+  environment.py     environmental gate (season/moon/tide) — scanning priority
+  geo.py             point-in-polygon and distance; shapely optional for GeoJSON
+  data.py            data loading — the boundary that changes to go live
+  main.py            orchestrator
+  test_caution.py    67 checks: duty of caution, invariants, validator rules
+  eval_agent.py      Phase 4.1 red-team harness: guardrail catch rate
+  list_models.py     helper: list the models available to your API key
+
+scaffolding/         built, self-checking, NOT exercised by the demo path
+  vision.py          SAR vessel detector (CA-CFAR) — the Step-3 detector
+  curation.py        Phase 1.2: CFAR auto-candidate YOLO labels for human review
+  train_detector.py  Phase 2.1: validate/split/data.yaml, TensorRT export seam
+  latency.py         Phase 4.2: per-stage latency breakdown
+  app.py             Phase 5.1: Streamlit triage view for an officer
+  README.md          what is here, why it is separate, how to run it
+
 demo_data/           synthetic demo data, schema mirroring the real sources
 docs/PROMPTS.md      the analyst and writer prompts, rule by rule, and what backs each
+docs/CLOSING_REPORT.md   phase-by-phase status, verification table, deliberate ceilings
+docs/DEPLOY_NIM_OCI.md   running a self-hosted Nemotron NIM on an OCI GPU shape
+pyrightconfig.json   type-check config; optional deps declared, tree stays clean
 ```
+
+`src/` and `scaffolding/` are separated so the demo path is visible in the tree rather than
+asserted in a document: nothing in `src/` imports anything from `scaffolding/`. Both are
+type-checked, and `pyright` reports zero errors across the two.
 
 ---
 

@@ -1,0 +1,7 @@
+{
+  "include": ["src", "scaffolding"],
+  "exclude": ["**/__pycache__"],
+  "typeCheckingMode": "standard",
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none"
+}

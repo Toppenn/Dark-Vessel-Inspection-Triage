@@ -18,6 +18,7 @@ import sys
 
 import analysis
 import data
+import environment
 import geo
 import validate
 
@@ -805,6 +806,76 @@ def main() -> int:
                 gear="bottom_trawl"), zones, config, day, [])["classification"]
         == off_structure["classification"],
         "an empty registry leaves classification unchanged (default: no guard)"))
+
+    print("\nEnvironmental gate: season before moon, and no reach into scores")
+
+    # The angula campaign is regulatory, and it is the filter anyone in the
+    # sector applies before looking at the moon at all. An earlier version
+    # modelled the moon correctly and ignored the season, so a July new moon —
+    # months after the fishery closes — was reported as peak conditions.
+    winter = {"environment": {"season": {"start": "11-01", "end": "02-28"}}}
+
+    in_season = environment.angula_conditions("2024-01-11T02:00:00Z", winter)
+    results.append(check(
+        in_season["suitability"] == environment.HIGH and in_season["in_season"],
+        f"a dark spring-tide night inside the campaign is high "
+        f"(got {in_season['suitability']})"))
+
+    # Same lunar geometry, six months later: new moon, spring tides, closed
+    # fishery. The moon figures stay true; the label must not say high.
+    out_of_season = environment.angula_conditions("2024-07-05T22:00:00Z", winter)
+    results.append(check(
+        out_of_season["suitability"] == environment.OUT_OF_SEASON
+        and out_of_season["moon_illumination"] < 0.1,
+        f"the same lunar conditions out of season are not high, while the moon "
+        f"figures remain computed (got {out_of_season['suitability']}, "
+        f"illumination {out_of_season['moon_illumination']})"))
+
+    # A November-to-February window wraps the year boundary, so a naive
+    # start <= today <= end excludes December and January: most of the season.
+    december = environment.angula_conditions("2024-12-20T02:00:00Z", winter)
+    february = environment.angula_conditions("2025-02-15T02:00:00Z", winter)
+    september = environment.angula_conditions("2024-09-15T02:00:00Z", winter)
+    results.append(check(
+        december["in_season"] and february["in_season"]
+        and not september["in_season"],
+        f"a window crossing the year boundary holds on both sides "
+        f"(Dec {december['in_season']}, Feb {february['in_season']}, "
+        f"Sep {september['in_season']})"))
+
+    # A season bound that cannot be read must fail loudly, like every other
+    # decisive piece of configuration in the engine.
+    try:
+        environment.angula_conditions(
+            "2024-01-11T02:00:00Z",
+            {"environment": {"season": {"start": "13-45", "end": "02-28"}}})
+        season_raises = False
+    except ValueError:
+        season_raises = True
+    results.append(check(
+        season_raises, "an invalid season bound raises instead of being ignored"))
+
+    # The gate ranks scanning priority. It must never reach into a vessel's
+    # score: a dark spring-tide night in season is not evidence against any
+    # individual boat. Moving the window swings the label from out_of_season to
+    # high; every score must be unmoved by it.
+    baseline = {r["id"]: (r["score"], r["classification"])
+                for r in dossier["records"]}
+    swung = []
+    for window in ({"start": "11-01", "end": "02-28"},
+                   {"start": "01-01", "end": "12-31"}):
+        altered = copy.deepcopy(zones_doc)
+        altered["config"].setdefault("environment", {})["season"] = window
+        result = analysis.analyse(altered, detections_doc)
+        swung.append(result["environmental_context"]["suitability"])
+        moved = {r["id"]: (r["score"], r["classification"])
+                 for r in result["records"]}
+        if moved != baseline:
+            swung.append("SCORES MOVED")
+    results.append(check(
+        "SCORES MOVED" not in swung and len(set(swung)) > 1,
+        f"the suitability label swings ({' -> '.join(swung)}) without moving "
+        f"any vessel score"))
 
     passed = sum(results)
     print(f"\n{passed}/{len(results)} checks passed\n")

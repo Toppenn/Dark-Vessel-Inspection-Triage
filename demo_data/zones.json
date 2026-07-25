@@ -25,7 +25,15 @@
     },
     "patrol_radius_km": 120,
     "study_area": "Gulf of Cadiz (demo)",
-    "output_language": "English"
+    "output_language": "English",
+    "environment": {
+      "_season_note": "Regulatory, not astronomical: each autonomous community opens its own angula campaign and the dates move between campaigns. This window follows the Cantabrian campaign for inland waters (1 November to 28 February). Set it to the window published for the jurisdiction being analysed.",
+      "season": {
+        "start": "11-01",
+        "end": "02-28"
+      },
+      "dark_illumination": 0.25
+    }
   },
   "zones": [
     {
@@ -124,7 +132,7 @@
       "id": "FIX-01",
       "name": "Bajo de los Corales research platform (demo)",
       "type": "fixed_platform",
-      "lat": 36.70,
+      "lat": 36.7,
       "lon": -7.05,
       "match_radius_m": 400
     }

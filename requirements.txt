@@ -1,9 +1,16 @@
+# Core: the agent layer. The deterministic engine, the validator and the whole
+# test suite import none of this and run on a bare interpreter.
 openai>=1.30.0
-# Frontend only (Phase 5). The deterministic engine and its tests need neither.
+
+# Frontend only (Phase 5, scaffolding/app.py). pydeck ships with streamlit but
+# is imported directly for the map layer, so it is declared explicitly.
 streamlit>=1.36.0
-# SAR vision detector only (Phase 2, src/vision.py). The engine and its tests
-# do not import it.
+pydeck>=0.9.0
+
+# SAR vision detector only (Phase 2, scaffolding/vision.py and the curation
+# chain that feeds it). The engine and its tests do not import it.
 numpy>=1.24.0
+
 # Real polygon layers only (Natura 2000 marine / WDPA GeoJSON in src/geo.py).
-# The demo zones are simple [lat,lon] rings and need neither this nor anything.
+# The demo zones are simple [lat,lon] rings and need nothing beyond the stdlib.
 shapely>=2.0.0

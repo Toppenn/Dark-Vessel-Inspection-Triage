@@ -11,7 +11,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# The engine, the scene data, and the Streamlit view that reads them. The
+# scaffolding directory is needed because the UI lives there; the training and
+# curation modules it also contains are inert without their optional
+# dependencies, which this CPU image deliberately does not install.
 COPY src/ ./src/
+COPY scaffolding/ ./scaffolding/
 COPY demo_data/ ./demo_data/
 
 # Non-root: the app never needs to write outside /app.
@@ -22,6 +27,6 @@ USER appuser
 # to point at a self-hosted NIM (e.g. http://nim:8000/v1). NVIDIA_API_KEY is
 # passed at run time (-e), never baked into the image.
 EXPOSE 8501
-CMD ["streamlit", "run", "src/app.py", \
+CMD ["streamlit", "run", "scaffolding/app.py", \
      "--server.address=0.0.0.0", "--server.port=8501", \
      "--server.headless=true"]

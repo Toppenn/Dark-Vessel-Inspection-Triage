@@ -17,9 +17,9 @@ Pipeline per chip:  Lee speckle filter -> CA-CFAR -> connected components
 It also emits the georeferenced detections (the vision.py contract), which is the
 bridge from a raw chip to the deterministic engine.
 
-    python src/curation.py                     # self-check on synthetic chips
-    python src/curation.py --input datasets/chips --out datasets/sar_vessels
-    python src/curation.py --synthetic 8 --out datasets/sar_vessels
+    python scaffolding/curation.py                     # self-check on synthetic chips
+    python scaffolding/curation.py --input datasets/chips --out datasets/sar_vessels
+    python scaffolding/curation.py --synthetic 8 --out datasets/sar_vessels
 """
 
 import argparse
@@ -56,7 +56,8 @@ def _bbox_to_yolo(bbox: dict, rows: int, cols: int, pad: int = 1) -> tuple:
     return xc, yc, w, h
 
 
-def curate_chip(image: np.ndarray, geo: dict, config: dict = None) -> tuple:
+def curate_chip(image: np.ndarray, geo: dict,
+                config: dict | None = None) -> tuple:
     """Return (yolo_lines, detections) for one chip. Labels are candidates."""
     image = np.asarray(image, dtype=np.float64)
     rows, cols = image.shape
@@ -86,7 +87,7 @@ def _synthetic_chips(n: int, seed: int = 0):
                                                        seed=seed + i + 1)
 
 
-def build_dataset(chips, out_dir: Path, geo: dict, config: dict = None) -> dict:
+def build_dataset(chips, out_dir: Path, geo: dict, config: dict | None = None) -> dict:
     """Write images/, labels/ and a manifest. `chips` yields (name, image)."""
     out_dir = Path(out_dir)
     img_dir = out_dir / "images"
@@ -112,7 +113,7 @@ def build_dataset(chips, out_dir: Path, geo: dict, config: dict = None) -> dict:
                        "review, NOT verified ground truth. Do not train on "
                        "chips whose review_status is still 'pending' as if they "
                        "were gold."),
-        "detector": "src/vision.py CA-CFAR (deterministic, auditable)",
+        "detector": "scaffolding/vision.py CA-CFAR (deterministic, auditable)",
         "chips": len(entries),
         "candidate_labels_total": total_labels,
         "entries": entries,

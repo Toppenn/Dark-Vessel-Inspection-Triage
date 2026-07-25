@@ -122,7 +122,7 @@ def _zones_containing(detection: dict, zones: list) -> list:
 DEFAULT_FIXED_MATCH_M = 300.0
 
 
-def _fixed_structure_match(detection: dict, structures: list) -> dict:
+def _fixed_structure_match(detection: dict, structures: list) -> dict | None:
     """Return the nearest charted fixed structure the detection falls on, or None.
 
     Platforms, wind turbines, buoys and aquaculture cages are bright, stationary
@@ -140,7 +140,7 @@ def _fixed_structure_match(detection: dict, structures: list) -> dict:
 
 
 def assess_detection(detection: dict, zones: list, config: dict, day: date,
-                     structures: list = None) -> dict:
+                     structures: list | None = None) -> dict:
     """Assess a single detection and return its record with an itemised score."""
     length_threshold = config["ais_length_threshold_m"]
     fishing_threshold = config["fishing_score_threshold"]
@@ -237,13 +237,14 @@ def assess_detection(detection: dict, zones: list, config: dict, day: date,
                     "kind": "zone", "zone": zone["name"], "zone_id": zone["id"],
                     "rests_on_activity": True,
                     "reason": (
-                        f"apparent fishing activity inside {zone['type']} "
+                        f"presence with a contextual fishing indication inside "
+                        f"{zone['type']} "
                         f"'{zone['name']}' ({zone['id']}) where all fishing gear "
                         f"is prohibited "
                         f"(activity per contextual classifier, non-observational)"),
                 })
                 score_items.append((
-                    f"apparent fishing where all gear is prohibited "
+                    f"contextual fishing indication where all gear is prohibited "
                     f"({zone['id']})", weights["zone_violation"]))
         elif gear in prohibited:
             if matched:

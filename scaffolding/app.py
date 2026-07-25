@@ -7,19 +7,25 @@ never computes a position, a score or a classification of its own.
 
     pip install -r requirements.txt
     export NVIDIA_API_KEY='nvapi-...'     # only needed for the agent step
-    streamlit run src/app.py
+    streamlit run scaffolding/app.py
 """
 
 import json
+
+# This module is scaffolding: it lives outside src/ because the demo path does
+# not exercise it. The engine it reads from does live in src/, so put that on
+# the path first. Every scaffolding module that imports the core does it this
+# same way.
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import streamlit as st
 
 # The sibling modules (analysis, data, …) use bare imports and assume src/ is on
-# the path. `streamlit run src/app.py` and `python src/main.py` both provide that;
+# the path. `streamlit run scaffolding/app.py` and `python src/main.py` both provide that;
 # this guard makes it hold under any launcher (e.g. the app-testing harness) too.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import analysis
 import data
@@ -113,6 +119,10 @@ def _agent_step(dossier: dict) -> None:
 
     Same contract as main.py: an output with blocking issues is withheld, never
     shown as if it were fit for an inspector."""
+    if agents is None:
+        st.error("The agent layer needs the OpenAI SDK: "
+                 "pip install -r requirements.txt")
+        return
     prioritisation = agents.prioritise(dossier)
     pri_issues = validate.validate_prioritisation(dossier, prioritisation)
     if validate.has_blockers(pri_issues):
@@ -157,9 +167,11 @@ try:
 except (OSError, KeyError, ValueError) as exc:
     st.error(f"Could not load or analyse the scene: {exc}")
     st.stop()
+    raise SystemExit(1)  # st.stop() ends the run; this makes that explicit
 
 env = dossier.get("environmental_context", {})
-suit_colour = {"high": "🔴", "moderate": "🟠", "low": "⚪"}.get(env.get("suitability"), "")
+suit_colour = {"high": "🔴", "moderate": "🟠", "low": "⚪",
+               "out_of_season": "⚫"}.get(env.get("suitability"), "")
 st.subheader(f"Environmental context — {suit_colour} angula suitability "
              f"{env.get('suitability', 'n/a').upper()}")
 c1, c2, c3 = st.columns(3)
