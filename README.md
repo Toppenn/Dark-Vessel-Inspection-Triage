@@ -253,13 +253,13 @@ shared anchors is not enough: the threshold figure appears in every AIS citation
 of them always intersect. What identifies misattribution is an anchor belonging *exclusively*
 to another detection.
 
-**Known blind spots, stated rather than discovered.** Three constructions still pass that a
-reader would call wrong: a brief with no caveat at all, a caveat that contradicts its own
-record (calling a 26 m vessel sub-threshold), and a suggested action that exceeds the
-system's remit (ordering seizure rather than inspection). 
-Each needs a judgement the current rules cannot make without false positives on legitimate
-phrasing, so they are recorded here as limits rather than papered over. Two others were
-closed only after a real run exposed them: the analyst stated a length of 19 m for a 55 m
+**Previously known blind spots, now resolved.** In earlier versions, three constructions could pass that a reader would call wrong: a brief with no caveat, a caveat that contradicted its own record, and a suggested action that exceeded the system's remit. These are now strictly blocked by three new deterministic guardrails:
+
+- **Mandatory Context Caveats (Rule A):** Any brief flagging potential indicators must include an explicit legal/operational caveat. Reports missing a caveat when indicators exist are flagged as `blocker`.
+- **Factual Length Consistency (Rule B):** Cross-references the vessel's physical length against the generated caveat. If a vessel is 15.0 m or larger, any model output stating or implying the vessel is under the threshold is immediately blocked.
+- **Authority Scope Limitation (Rule C):** Restricts the `suggested_action` field to administrative and inspection boundaries. Actions containing judicial overreach (e.g., *seize*, *confiscate*, *arrest*, *impound*) are rejected as `blocker`.
+
+Two others were closed only after a real run exposed them: the analyst stated a length of 19 m for a 55 m
 vessel and passed clean, because nothing compared its prose against the record; and anchors
 were being lost to non-breaking hyphens, since the model writes `RES‑03` as readily as
 `RES-03`. Both are now normalised and checked. The engine itself is unaffected: 20,000
