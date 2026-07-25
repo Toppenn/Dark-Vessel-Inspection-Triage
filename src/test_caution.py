@@ -16,6 +16,7 @@ no cost. Run them before every commit.
 import copy
 import sys
 
+import agents
 import analysis
 import data
 import environment
@@ -987,6 +988,30 @@ def main() -> int:
     results.append(check(
         bool(action_issues("Inspect")),
         "an action too short to act on is reported"))
+
+    print("\nAnalyst omission: detected before the report is written")
+
+    # The observed failure is truncation, not invention: the analyst ranks the
+    # obvious candidates and stops. agents.prioritise retries once with the
+    # dropped ids fed back, so this helper is what decides whether that happens.
+    candidate_ids = [r["id"] for r in dossier["inspection_candidates"]]
+
+    complete_ranking = {"prioritised_candidates":
+                        [{"id": i} for i in candidate_ids]}
+    results.append(check(
+        not agents._omitted_candidates(dossier, complete_ranking),
+        f"a ranking covering all {len(candidate_ids)} candidates reports no omission"))
+
+    truncated = {"prioritised_candidates":
+                 [{"id": i} for i in candidate_ids[:len(candidate_ids) // 2]]}
+    results.append(check(
+        set(agents._omitted_candidates(dossier, truncated))
+        == set(candidate_ids[len(candidate_ids) // 2:]),
+        "a truncated ranking names exactly the candidates it dropped"))
+
+    results.append(check(
+        len(agents._omitted_candidates(dossier, {})) == len(candidate_ids),
+        "a response with no ranking at all reports every candidate as omitted"))
 
     passed = sum(results)
     print(f"\n{passed}/{len(results)} checks passed\n")

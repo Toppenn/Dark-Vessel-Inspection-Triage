@@ -387,21 +387,49 @@ def _looks_degenerate(text: str) -> bool:
     return len(set(sentences)) / len(sentences) < 0.1
 
 
+def _omitted_candidates(dossier: dict, data: dict) -> list:
+    """Candidate ids the dossier holds that the analyst did not rank."""
+    ranked = {c.get("id") for c in
+              (data.get("prioritised_candidates") or [])
+              if isinstance(c, dict)}
+    return [r["id"] for r in dossier.get("inspection_candidates", [])
+            if r["id"] not in ranked]
+
+
 def prioritise(dossier: dict) -> dict:
     """Agent 1: prioritise candidates and reason over the scene as a whole."""
-    user = ("Factual dossier:\n\n"
-            + json.dumps(_agent_payload(dossier), ensure_ascii=False, indent=2))
-    
-    # Complete the completion call to receive the structured analyst response
+    candidates = dossier.get("inspection_candidates", [])
+    user = (f"Factual dossier:\n\n"
+            f"{json.dumps(_agent_payload(dossier), ensure_ascii=False, indent=2)}"
+            f"\n\nThis dossier holds {len(candidates)} inspection candidates: "
+            f"{', '.join(r['id'] for r in candidates)}. Rank every one of them. "
+            f"Ranking is not selection: a low rank says a record comes later, "
+            f"and leaving one out says nothing at all about it.")
+
     data = _complete_json(ANALYST_MODEL, ANALYST_SYSTEM, user)
-    
-    # Validate structure and guard against hallucinated candidate IDs
+
+    # The observed failure is truncation, not invention: the analyst ranks the
+    # obvious candidates and stops. That is under-reporting, and the validator
+    # reports it — but a warning on a report nobody re-runs is worse than
+    # asking again. One retry, feeding back exactly which ids were dropped,
+    # mirrors what _complete_json already does for a malformed response.
+    omitted = _omitted_candidates(dossier, data)
+    if omitted:
+        retry = (user + f"\n\nA previous attempt omitted {', '.join(omitted)}. "
+                        f"Every candidate in the dossier must appear exactly "
+                        f"once in prioritised_candidates.")
+        retried = _complete_json(ANALYST_MODEL, ANALYST_SYSTEM, retry)
+        # Keep the retry only if it actually covers more ground; a second
+        # truncation should not replace a better first answer.
+        if len(_omitted_candidates(dossier, retried)) < len(omitted):
+            data = retried
+
     structure = validator_llm.validate_analyst_structure(data)
     if validator_llm.has_blockers(structure):
         raise ValueError(
             "Analyst response is structurally unusable:\n"
             + "\n".join(f"- {message}" for _, _, message in structure))
-        
+
     return data
 
 

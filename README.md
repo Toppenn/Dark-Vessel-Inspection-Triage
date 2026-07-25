@@ -470,6 +470,15 @@ broadcasting. We did not respond by writing a longer prompt: each of those failu
 deterministic rule in `validate.py` with a test that reproduces it. **Guardrails here are not
 prompt hygiene; they are the product.**
 
+**Asking again beats warning about it.** The analyst's recurring failure is truncation, not
+invention: it ranks the obvious candidates and stops, dropping one to three medium-priority
+records. The validator reports that, but a warning on a report nobody re-runs is worse than
+asking again — so `prioritise` retries once with the dropped ids fed back, the same shape
+`_complete_json` already uses for a malformed response. The retry is kept only if it covers
+more ground than the first answer, so a second truncation cannot replace a better one. The
+prompt also states the candidate count and that ranking is not selection: a low rank says a
+record comes later, while omission says nothing about it at all.
+
 **The validator has been wrong three times, and each is now a regression test.** Two rules
 once passed a report that was visibly flawed: an empty `regulation` field slipped through a
 check that looked only for the words "none identified", and a misattributed priority claim
@@ -510,7 +519,7 @@ no equivalent band — but we would rather flag it as unresolved than defend it 
 ## Current status
 
 Working end-to-end prototype: deterministic engine, two agents on open Nemotron models, and
-a deterministic validator, with 75 checks that run without an API key or network access.
+a deterministic validator, with 78 checks that run without an API key or network access.
 `pyright` reports zero errors across `src/` and `scaffolding/`. Demo data is synthetic.
 
 **What the real source does and does not provide.** Global Fishing Watch publishes, per SAR
@@ -572,7 +581,7 @@ export ANALYST_MODEL='nvidia/nemotron-3-super-120b-a12b'
 export WRITER_MODEL='nvidia/nemotron-3-super-120b-a12b'
 
 # 4. Checks — no API key, no network
-python src/test_caution.py     # 75 checks: caution, invariants, validator rules
+python src/test_caution.py     # 78 checks: caution, invariants, validator rules
 python src/eval_agent.py       # red-teams the guardrail with real LLM failure modes
 python src/environment.py      # season gate, year-crossing window, error policy
 
@@ -609,7 +618,7 @@ src/                 the engine and the demo path
   geo.py             point-in-polygon and distance; shapely optional for GeoJSON
   data.py            data loading — the boundary that changes to go live
   main.py            orchestrator
-  test_caution.py    75 checks: duty of caution, invariants, validator rules
+  test_caution.py    78 checks: duty of caution, invariants, validator rules
   eval_agent.py      Phase 4.1 red-team harness: guardrail catch rate
   validator_llm.py   structural check on the analyst response, before the factual ones
   list_models.py     helper: list the models available to your API key
