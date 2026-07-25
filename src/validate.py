@@ -277,6 +277,19 @@ def validate_report(dossier: dict, report: dict) -> list:
                            f"the regulation cited carries anchors belonging to "
                            f"another detection: {detail}"))
 
+        # 8b. The regulation field names provisions; it does not restate the
+        #     indicators. A writer that pastes the indicator text here leaves
+        #     the inspector reading the same paragraph twice and never seeing
+        #     which rule is at stake. Detected by containment rather than
+        #     length: a long citation is fine, a copy of an indicator is not.
+        for indicator in record.get("potential_indicators", []):
+            reason = (indicator.get("reason") or "").strip()
+            if len(reason) > 40 and reason[:60].lower() in regulation.lower():
+                issues.append((WARNING, where,
+                               "the regulation field restates an indicator "
+                               "instead of naming the provision it concerns"))
+                break
+
         # 9. Fidelity across languages. The brief must restate the record's
         #    indicators rather than invent new ones, and word overlap cannot
         #     show that once the brief is a translation. Tokens that translation
@@ -433,6 +446,39 @@ def _misattributed_priorities(text: str, records: dict) -> list:
     return problems
 
 
+def _record_figures(record: dict) -> set:
+    """Every figure and identifier the dossier legitimately holds for a record.
+
+    Not just the indicator text: an analyst that writes "44.02 km from base" is
+    quoting the dossier, and an earlier version of this check blocked four
+    reports for exactly that, because it only looked at the indicators and the
+    length. A rule that rejects the model for citing real data is worse than the
+    fabrication it was written to catch.
+    """
+    figures = _invariant_tokens(" ".join(
+        i.get("reason", "") for i in record.get("potential_indicators", [])))
+    figures |= _invariant_tokens(" ".join(
+        str(n) for n in record.get("contextual_notes", []) or []))
+
+    for key in ("estimated_length_m", "distance_from_base_km", "fishing_score",
+                "speed_kn", "score"):
+        value = record.get(key)
+        if value is not None:
+            figures.add(str(value))
+
+    position = record.get("position") or {}
+    for key in ("lat", "lon"):
+        if position.get(key) is not None:
+            figures.add(str(position[key]))
+            figures.add(str(abs(position[key])))   # written without the sign
+
+    for zone in record.get("zones", []) or []:
+        if zone.get("id"):
+            figures.add(zone["id"])
+
+    return figures
+
+
 def validate_prioritisation(dossier: dict, prioritisation: dict) -> list:
     """Check the analyst-agent output against the dossier."""
     issues = []
@@ -469,9 +515,7 @@ def validate_prioritisation(dossier: dict, prioritisation: dict) -> list:
         if record is None:
             continue
         cited = _invariant_tokens(str(candidate.get("reason", "")))
-        own = _invariant_tokens(" ".join(
-            i.get("reason", "") for i in record.get("potential_indicators", [])))
-        own |= {str(record.get("estimated_length_m", ""))}
+        own = _record_figures(record)
         if cited and own and not (cited & own):
             issues.append((BLOCKER, f"prioritised {candidate.get('id')}",
                            f"the reason cites {sorted(cited)}, none of which "

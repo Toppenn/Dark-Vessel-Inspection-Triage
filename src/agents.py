@@ -318,8 +318,13 @@ STRICT SCOPE LIMIT: Actions must remain strictly within administrative and
 inspection authority. NEVER suggest judicial or enforcement actions such as
 "seize", "confiscate", "arrest", or "impound".
 
-REGULATION FIELD: never leave it empty. If the record has indicators, name the
-provision each one concerns. Only an empty indicator list may produce
+REGULATION FIELD: name the provisions, do not restate the indicators. The
+indicators already appear in their own field; copying them here leaves the
+inspector reading the same paragraph twice and never seeing which rule is at
+stake. Write the citation and the zone, nothing else — for example
+"Article 10(1), Council Regulation (EC) No 1224/2009, as amended by Regulation
+(EU) 2023/2842; Islote Sur Integral Reserve (RES-03)". Never leave it empty when
+the record has indicators; only an empty indicator list may produce
 "none identified".
 
 INDICATORS FIELD: restate, in full, the `reason` text of each entry in that
