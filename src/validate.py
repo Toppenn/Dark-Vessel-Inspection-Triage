@@ -160,6 +160,28 @@ def validate_report(dossier: dict, report: dict) -> list:
         record_tokens = _invariant_tokens(" ".join(
             i.get("reason", "") for i in record.get("potential_indicators", [])))
 
+        # A. A record with potential indicators must always include a caveat 
+        #    evaluating the context.
+        if has_indicators and not caveat.strip():
+            issues.append((BLOCKER, where,
+                           "record has potential indicators, yet the mandatory caveat is missing"))
+
+        # B. The caveat must not contradict the record's factual length.
+        #    Vessels >= 15.0m invoke the AIS carriage requirement, so the model 
+        #    must not claim the vessel falls below this threshold.
+        length = record.get("estimated_length_m")
+        if length is not None and float(length) >= 15.0:
+            if re.search(r"(under|below|less than)\s*15|menos de\s*15|not meet|no alcanza", caveat.lower()):
+                issues.append((BLOCKER, where,
+                               f"caveat suggests the vessel is under 15m, but the recorded length is {length}m"))
+
+        # C. The suggested action must not exceed the inspector's authority. 
+        #    An inspector can observe or contact, but not seize or arrest.
+        forbidden_actions = r"\b(seize|confiscate|arrest|impound|incautar|detener|apresar|confiscar)\b"
+        if re.search(forbidden_actions, action.lower()):
+            issues.append((BLOCKER, where,
+                           f"suggested action '{action}' exceeds inspector authority by invoking seizure or arrest"))
+
         # 3. Never invoke the carriage requirement when the record's own
         #    indicator list does not engage it — whether the vessel is
         #    broadcasting, below the threshold, or of unknown AIS status.
