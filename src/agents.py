@@ -17,7 +17,7 @@ import json
 import os
 import re
 
-from src.validator_llm import validate_analyst_output
+import validator_llm
 
 from openai import OpenAI
 
@@ -396,11 +396,11 @@ def prioritise(dossier: dict) -> dict:
     data = _complete_json(ANALYST_MODEL, ANALYST_SYSTEM, user)
     
     # Validate structure and guard against hallucinated candidate IDs
-    errors = validate_analyst_output(data, dossier)
-    if errors:
+    structure = validator_llm.validate_analyst_structure(data)
+    if validator_llm.has_blockers(structure):
         raise ValueError(
-            "Analyst output failed validation:\n" + "\n".join(f"- {e}" for e in errors)
-        )
+            "Analyst response is structurally unusable:\n"
+            + "\n".join(f"- {message}" for _, _, message in structure))
         
     return data
 

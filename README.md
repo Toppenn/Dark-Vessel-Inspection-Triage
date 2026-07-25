@@ -217,9 +217,12 @@ The validator checks, for both the analyst and the writer:
 | A brief listing more indicators than the record contains (invention by addition) | blocker |
 | A brief stating a priority the engine did not assign (a high written up as low) | blocker |
 | A regulation carrying anchors that belong exclusively to a different detection | blocker |
+| A brief raising indicators with no caveat at all | blocker |
+| A caveat describing a vessel as under the carriage threshold when the record exceeds it | blocker |
+| A suggested action invoking seizure or arrest, beyond an inspector's authority | blocker |
 | A narrative claim listing a record among a priority class it does not belong to | warning |
 | A record with indicators but no regulation named, including an empty field | warning |
-| A suggested action that restates context ("40.77 km from base") instead of instructing | warning |
+| A suggested action that is only context ("40.77 km from base") with no instruction left | warning |
 | A medium-priority record with no brief | warning |
 | A medium-priority record the analyst left out of its prioritisation | warning |
 | An analyst reason citing figures or zones that do not appear in its own record | blocker |
@@ -255,9 +258,17 @@ to another detection.
 
 **Previously known blind spots, now resolved.** In earlier versions, three constructions could pass that a reader would call wrong: a brief with no caveat, a caveat that contradicted its own record, and a suggested action that exceeded the system's remit. These are now strictly blocked by three new deterministic guardrails:
 
-- **Mandatory Context Caveats (Rule A):** Any brief flagging potential indicators must include an explicit legal/operational caveat. Reports missing a caveat when indicators exist are flagged as `blocker`.
-- **Factual Length Consistency (Rule B):** Cross-references the vessel's physical length against the generated caveat. If a vessel is 15.0 m or larger, any model output stating or implying the vessel is under the threshold is immediately blocked.
-- **Authority Scope Limitation (Rule C):** Restricts the `suggested_action` field to administrative and inspection boundaries. Actions containing judicial overreach (e.g., *seize*, *confiscate*, *arrest*, *impound*) are rejected as `blocker`.
+- **Mandatory Context Caveats (Rule A):** a brief that raises indicators must carry a
+  caveat. The caveat is not a disclaimer; it is the counter-hypothesis the inspector has to
+  rule out, and a brief that offers none is unbalanced by omission.
+- **Factual Length Consistency (Rule B):** cross-references the record's length against
+  the caveat. A vessel at or above the carriage threshold cannot be described as falling
+  below it, because that invites an inspector to dismiss a live indicator. The threshold is
+  read from the dossier rather than written into the rule, so it follows a jurisdiction that
+  sets its own.
+- **Authority Scope Limitation (Rule C):** the system proposes inspection; it does not
+  order seizure. An action invoking *seize*, *confiscate*, *arrest* or *impound* — in either
+  working language — exceeds what an inspector may do and is blocked.
 
 Two others were closed only after a real run exposed them: the analyst stated a length of 19 m for a 55 m
 vessel and passed clean, because nothing compared its prose against the record; and anchors
@@ -373,25 +384,27 @@ of the moon alone.
 
 ```
   1. D-010 [ais+zone, confidence high]
-      High-priority candidate with two independent indicators: radar-estimated length
-      26.5 m exceeds AIS threshold (no AIS match) and contextual fishing indication
-      inside integral reserve RES-03 where all gear is prohibited.
-    4. D-005 [zone, confidence medium]
-      Medium-priority candidate; AIS indicator suppressed due to length below threshold,
-      but single zone indicator: contextual fishing indication inside integral reserve
-      RES-03 where all gear is prohibited.
+     High-priority candidate with two independent indicators: radar-estimated length
+     26.5 m exceeds AIS threshold (no AIS match) and contextual fishing indication
+     inside integral reserve RES-03 where all gear is prohibited.
+  4. D-005 [zone, confidence medium]
+     Medium-priority candidate; AIS indicator suppressed due to length below threshold,
+     but single zone indicator: contextual fishing indication inside integral reserve
+     RES-03 where all gear is prohibited.
 
-  AIS not applicable (indicator suppressed):
-    - D-005: estimated length 9.5 m is below the 15.0 m AIS carriage threshold; absence
-      of AIS broadcast is not an indicator per Article 10(1).
+AIS not applicable (indicator suppressed):
+  - D-005: estimated length 9.5 m is below the 15.0 m AIS carriage threshold; absence
+    of AIS broadcast is not an indicator per Article 10(1).
 
-  Stated limitations:
-    - Cannot confirm vessel flag state, actual gear deployed, or whether any AIS
-      suppression is lawfully derogated under Article 10(2).
-    - Radar-derived length estimates have uncertainty; true length may fall below or
-      above the AIS/VMS thresholds.
-    - Contextual fishing indications are non-observational and require corroboration
-      during inspection.
+Stated limitations:
+  - Cannot verify vessel flag state, actual gear deployed, or whether any AIS
+    suppression is lawfully derogated under Article 10(2).
+  - Radar-derived length estimates have uncertainty; true length may fall below or
+    above the AIS threshold.
+  - Contextual fishing indications are non-observational and require corroboration
+    during inspection.
+  - The analysis does not account for possible AIS switch-off notifications that would
+    render a dark vessel lawfully compliant.
 ```
 
 The agent reproduces the suppression rule in its own words and states, unprompted, the four
@@ -457,12 +470,18 @@ broadcasting. We did not respond by writing a longer prompt: each of those failu
 deterministic rule in `validate.py` with a test that reproduces it. **Guardrails here are not
 prompt hygiene; they are the product.**
 
-**The validator itself was wrong twice.** Two rules passed a report that was visibly
-flawed: an empty `regulation` field slipped through a check that looked only for the words
-"none identified", and a misattributed priority claim written without parentheses slipped
-through a pattern that required them. Both were found by reading a "no issues" run against
-the output by hand. A guardrail that has never been checked against a failure it was
-supposed to catch is an assumption, not a guarantee; both cases are now regression tests.
+**The validator has been wrong three times, and each is now a regression test.** Two rules
+once passed a report that was visibly flawed: an empty `regulation` field slipped through a
+check that looked only for the words "none identified", and a misattributed priority claim
+written without parentheses slipped through a pattern that required them. The third failed
+the other way — it flagged all seven briefs in a correct report, because it matched any
+action *starting* with a distance, and the model had written "38.0 km from base: board and
+verify gear", a perfectly actionable line with the range in front. The rule now asks whether
+an instruction remains once the distance is set aside. A guardrail that has never been
+checked against both a failure it should catch and a legitimate case it should not is an
+assumption, not a guarantee.
+
+
 
 **Classification counts indicators; it does not total points.** Two or more independent
 indicators concurring makes a record high priority, one makes it medium, none makes it
@@ -491,7 +510,7 @@ no equivalent band — but we would rather flag it as unresolved than defend it 
 ## Current status
 
 Working end-to-end prototype: deterministic engine, two agents on open Nemotron models, and
-a deterministic validator, with 67 checks that run without an API key or network access.
+a deterministic validator, with 75 checks that run without an API key or network access.
 `pyright` reports zero errors across `src/` and `scaffolding/`. Demo data is synthetic.
 
 **What the real source does and does not provide.** Global Fishing Watch publishes, per SAR
@@ -553,7 +572,7 @@ export ANALYST_MODEL='nvidia/nemotron-3-super-120b-a12b'
 export WRITER_MODEL='nvidia/nemotron-3-super-120b-a12b'
 
 # 4. Checks — no API key, no network
-python src/test_caution.py     # 67 checks: caution, invariants, validator rules
+python src/test_caution.py     # 75 checks: caution, invariants, validator rules
 python src/eval_agent.py       # red-teams the guardrail with real LLM failure modes
 python src/environment.py      # season gate, year-crossing window, error policy
 
@@ -590,8 +609,9 @@ src/                 the engine and the demo path
   geo.py             point-in-polygon and distance; shapely optional for GeoJSON
   data.py            data loading — the boundary that changes to go live
   main.py            orchestrator
-  test_caution.py    67 checks: duty of caution, invariants, validator rules
+  test_caution.py    75 checks: duty of caution, invariants, validator rules
   eval_agent.py      Phase 4.1 red-team harness: guardrail catch rate
+  validator_llm.py   structural check on the analyst response, before the factual ones
   list_models.py     helper: list the models available to your API key
 
 scaffolding/         built, self-checking, NOT exercised by the demo path

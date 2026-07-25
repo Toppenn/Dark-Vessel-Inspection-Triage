@@ -166,14 +166,22 @@ def validate_report(dossier: dict, report: dict) -> list:
             issues.append((BLOCKER, where,
                            "record has potential indicators, yet the mandatory caveat is missing"))
 
-        # B. The caveat must not contradict the record's factual length.
-        #    Vessels >= 15.0m invoke the AIS carriage requirement, so the model 
-        #    must not claim the vessel falls below this threshold.
+        # B. The caveat must not contradict the record's factual length. A
+        #    vessel above the carriage threshold cannot be described as falling
+        #    below it: that invites an inspector to dismiss a live indicator.
+        #    The threshold comes from the dossier, not from a literal here — it
+        #    is jurisdiction configuration, and a rule that hardcodes it would
+        #    check the wrong number the moment a jurisdiction sets its own.
+        threshold = dossier.get("ais_length_threshold_m")
         length = record.get("estimated_length_m")
-        if length is not None and float(length) >= 15.0:
-            if re.search(r"(under|below|less than)\s*15|menos de\s*15|not meet|no alcanza", caveat.lower()):
+        if threshold is not None and length is not None and float(length) >= float(threshold):
+            below_claim = (rf"(under|below|less than)\s*{int(float(threshold))}"
+                           rf"|menos de\s*{int(float(threshold))}|not meet|no alcanza")
+            if re.search(below_claim, caveat.lower()):
                 issues.append((BLOCKER, where,
-                               f"caveat suggests the vessel is under 15m, but the recorded length is {length}m"))
+                               f"the caveat describes the vessel as under the "
+                               f"{threshold} m threshold, but the record gives "
+                               f"{length} m"))
 
         # C. The suggested action must not exceed the inspector's authority. 
         #    An inspector can observe or contact, but not seize or arrest.
@@ -300,10 +308,18 @@ def validate_report(dossier: dict, report: dict) -> list:
                            f"indicator that no fact supports"))
 
         # 11. The suggested action must be an instruction. A model that writes
-        #    only a distance ("40.77 km from base") has restated context; an
+        #     only a distance ("40.77 km from base") has restated context; an
         #     inspector cannot act on it.
-        if not action or len(action) < 15 or re.match(
-                r"^[\d.,]+\s*(km|nm|miles)\b", action, re.IGNORECASE):
+        #
+        #     What matters is whether an instruction remains once the distance
+        #     is set aside, not whether the action happens to open with one.
+        #     An earlier version matched any action STARTING with a distance and
+        #     flagged all seven briefs in a correct report, because the model had
+        #     simply written "38.0 km from base: board and verify gear" — a
+        #     perfectly actionable line with the range in front.
+        instruction = re.sub(r"^[\d.,]+\s*(km|nm|miles)\b[^:.]*[:.]?\s*", "",
+                             action, flags=re.IGNORECASE).strip()
+        if not instruction or len(instruction) < 15:
             issues.append((WARNING, where,
                            f"suggested action '{action}' states context rather "
                            f"than an instruction the inspector can follow"))

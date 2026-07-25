@@ -877,6 +877,117 @@ def main() -> int:
         f"the suitability label swings ({' -> '.join(swung)}) without moving "
         f"any vessel score"))
 
+    print("\nCaveat and action integrity")
+
+    caveat_record = next(r for r in dossier["inspection_candidates"]
+                         if r["estimated_length_m"]
+                         >= config["ais_length_threshold_m"])
+
+    def caveat_brief(**overrides):
+        base = {
+            "id": caveat_record["id"],
+            "priority": caveat_record["classification"].replace("_priority", ""),
+            "position": (f"{caveat_record['position']['lat']}, "
+                         f"{caveat_record['position']['lon']}"),
+            "indicators": [i["reason"]
+                           for i in caveat_record["potential_indicators"]],
+            "regulation_concerned":
+                caveat_record["potential_indicators"][0]["reason"][:60],
+            "suggested_action": "Board and verify gear and documentation",
+            "caveat": "The vessel may be transiting without deploying gear",
+        }
+        base.update(overrides)
+        return base
+
+    def caveat_issues(**overrides):
+        """Issues raised against this brief only.
+
+        A report carrying one brief also raises omission issues for every other
+        candidate; those belong to a different rule and would mask what is being
+        tested here.
+        """
+        report = {"executive_summary": "Candidates identified.",
+                  "inspection_briefs": [caveat_brief(**overrides)],
+                  "methodological_note": "n/a", "human_decision_required": "n/a"}
+        return [i for i in validate.validate_report(dossier, report)
+                if caveat_record["id"] in i[1] and "no inspection brief" not in i[2]]
+
+    # The caveat is the counter-hypothesis an inspector must rule out. A brief
+    # that raises indicators and offers none is unbalanced by omission.
+    results.append(check(
+        any("mandatory caveat is missing" in message
+            for _, _, message in caveat_issues(caveat="")),
+        "a brief with indicators but no caveat is blocked"))
+
+    # A caveat that contradicts its own record would have an inspector dismiss
+    # a live indicator. The threshold is read from the dossier, so the rule
+    # follows a jurisdiction that sets its own.
+    caveat_threshold = int(config["ais_length_threshold_m"])
+    results.append(check(
+        any("threshold, but the record" in message for _, _, message
+            in caveat_issues(caveat=f"The vessel is below {caveat_threshold} m, "
+                                    f"so AIS carriage is not required")),
+        f"a caveat claiming the vessel is under {caveat_threshold} m is blocked "
+        f"when the record gives {caveat_record['estimated_length_m']} m"))
+
+    # The system proposes inspection; it does not order seizure. An action
+    # beyond the inspector's authority is outside the system's remit.
+    results.append(check(
+        any("exceeds inspector authority" in message for _, _, message
+            in caveat_issues(suggested_action="Seize the vessel and arrest the "
+                                              "master immediately")),
+        "an action invoking seizure or arrest is blocked"))
+
+    results.append(check(
+        not caveat_issues(),
+        f"a well-formed brief raises none of these ({caveat_issues()})"))
+
+    print("\nSuggested action: instruction, not distance")
+
+    action_record = dossier["inspection_candidates"][0]
+
+    def action_issues(action):
+        brief = {
+            "id": action_record["id"],
+            "priority": action_record["classification"].replace("_priority", ""),
+            "position": (f"{action_record['position']['lat']}, "
+                         f"{action_record['position']['lon']}"),
+            "indicators": [i["reason"]
+                           for i in action_record["potential_indicators"]],
+            "regulation_concerned":
+                action_record["potential_indicators"][0]["reason"][:60],
+            "suggested_action": action,
+            "caveat": "The vessel may be transiting without deploying gear",
+        }
+        report = {"executive_summary": "Candidates identified.",
+                  "inspection_briefs": [brief],
+                  "methodological_note": "n/a", "human_decision_required": "n/a"}
+        return [i for i in validate.validate_report(dossier, report)
+                if "states context" in i[2]]
+
+    # The rule asks whether an instruction remains once the distance is set
+    # aside, not whether the action opens with one. An earlier version matched
+    # any action STARTING with a distance and flagged every brief in a correct
+    # report, because the model wrote the range in front of a real instruction.
+    results.append(check(
+        not action_issues("38.0 km from base: board and verify AIS compliance, "
+                          "gear and documentation."),
+        "an instruction preceded by the range is accepted"))
+
+    results.append(check(
+        not action_issues("Board and verify gear and documentation; "
+                          "38.0 km from base"),
+        "an instruction followed by the range is accepted"))
+
+    # But an action that is only context still has nothing an inspector can do.
+    results.append(check(
+        bool(action_issues("38.0 km from base")),
+        "an action that is only a distance is reported"))
+
+    results.append(check(
+        bool(action_issues("Inspect")),
+        "an action too short to act on is reported"))
+
     passed = sum(results)
     print(f"\n{passed}/{len(results)} checks passed\n")
     return 0 if passed == len(results) else 1
