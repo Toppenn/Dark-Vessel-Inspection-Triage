@@ -45,7 +45,7 @@ self-contained chain (`train_detector` → `curation` → `vision`).
 `streamlit`, `pydeck` and `ultralytics` are optional by design: they belong to
 the frontend and training scaffolds, not to the engine, and
 `requirements-train.txt` is deliberately not installed on a CPU box. The engine
-and its 67 checks run on a bare interpreter.
+and its 79 checks run on a bare interpreter.
 
 `pyrightconfig.json` therefore silences missing-import errors for the whole tree.
 Leaving them on would keep a permanently red editor and train the eye to ignore
