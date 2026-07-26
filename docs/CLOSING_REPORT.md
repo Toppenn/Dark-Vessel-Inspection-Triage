@@ -117,12 +117,13 @@ The tree separates what the demo path exercises from what it does not.
 |---|---|
 | `analysis.py` | Deterministic cross-reference engine — the tool the agents call |
 | `validate.py` | Checks model output against the dossier; blocks on failure |
+| `validate_structure.py` | Structural check on the analyst response, before the factual ones |
 | `agents.py` | Nemotron agents: analyst + writer |
 | `environment.py` | Environmental context gate (season/moon/tide) — scan priority |
 | `geo.py` | Point-in-polygon and distance; shapely optional for real GeoJSON |
 | `data.py` | Data loading — the boundary that changes to go live (GFW adapter) |
 | `main.py` | CLI orchestrator |
-| `test_caution.py` | 67 checks: duty of caution, invariants, validator rules |
+| `test_caution.py` | 79 checks: duty of caution, invariants, validator rules |
 | `eval_agent.py` | Red-team harness (Phase 4.1): guardrail catch rate |
 | `list_models.py` | Helper: list the models available to an API key |
 
@@ -148,7 +149,7 @@ module runs its own self-check and imports the core through one shared bootstrap
 
 | Check | Result |
 |---|---|
-| `test_caution.py` — duty of caution, invariants, validator rules | **67/67** |
+| `test_caution.py` — duty of caution, invariants, validator rules | **79/79** |
 | `eval_agent.py` — guardrail against LLM hallucination | **15/15** (12/12 adversarial) |
 | `vision.py` — CFAR recovery on a synthetic scene | **4/4 targets**, 0 false |
 | `curation.py` — candidate YOLO labels | 3/3, valid format |
