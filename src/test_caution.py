@@ -16,7 +16,13 @@ no cost. Run them before every commit.
 import copy
 import sys
 
-import agents
+try:
+    import agents
+except ImportError:                     # noqa: S110
+    # Deferred: these checks run on a bare interpreter. Only the
+    # analyst-omission section needs agents, which pulls in the OpenAI SDK.
+    agents = None
+
 import analysis
 import data
 import environment
@@ -1020,27 +1026,31 @@ def main() -> int:
 
     print("\nAnalyst omission: detected before the report is written")
 
-    # The observed failure is truncation, not invention: the analyst ranks the
-    # obvious candidates and stops. agents.prioritise retries once with the
-    # dropped ids fed back, so this helper is what decides whether that happens.
-    candidate_ids = [r["id"] for r in dossier["inspection_candidates"]]
+    if agents is None:
+        print("  SKIP  analyst-omission checks: the OpenAI SDK is not installed. "
+              "Everything else here runs without it.")
+    else:
+        # The observed failure is truncation, not invention: the analyst ranks the
+        # obvious candidates and stops. agents.prioritise retries once with the
+        # dropped ids fed back, so this helper is what decides whether that happens.
+        candidate_ids = [r["id"] for r in dossier["inspection_candidates"]]
 
-    complete_ranking = {"prioritised_candidates":
-                        [{"id": i} for i in candidate_ids]}
-    results.append(check(
-        not agents._omitted_candidates(dossier, complete_ranking),
-        f"a ranking covering all {len(candidate_ids)} candidates reports no omission"))
+        complete_ranking = {"prioritised_candidates":
+                            [{"id": i} for i in candidate_ids]}
+        results.append(check(
+            not agents._omitted_candidates(dossier, complete_ranking),
+            f"a ranking covering all {len(candidate_ids)} candidates reports no omission"))
 
-    truncated = {"prioritised_candidates":
-                 [{"id": i} for i in candidate_ids[:len(candidate_ids) // 2]]}
-    results.append(check(
-        set(agents._omitted_candidates(dossier, truncated))
-        == set(candidate_ids[len(candidate_ids) // 2:]),
-        "a truncated ranking names exactly the candidates it dropped"))
+        truncated = {"prioritised_candidates":
+                     [{"id": i} for i in candidate_ids[:len(candidate_ids) // 2]]}
+        results.append(check(
+            set(agents._omitted_candidates(dossier, truncated))
+            == set(candidate_ids[len(candidate_ids) // 2:]),
+            "a truncated ranking names exactly the candidates it dropped"))
 
-    results.append(check(
-        len(agents._omitted_candidates(dossier, {})) == len(candidate_ids),
-        "a response with no ranking at all reports every candidate as omitted"))
+        results.append(check(
+            len(agents._omitted_candidates(dossier, {})) == len(candidate_ids),
+            "a response with no ranking at all reports every candidate as omitted"))
 
     passed = sum(results)
     print(f"\n{passed}/{len(results)} checks passed\n")

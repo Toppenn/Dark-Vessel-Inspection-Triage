@@ -406,6 +406,8 @@ no equivalent band — but we would rather flag it as unresolved than defend it 
 
 Working end-to-end prototype: deterministic engine, two agents on open Nemotron models, and
 a deterministic validator, with 79 checks that run without an API key or network access.
+76 of them need no dependencies at all; the remaining three exercise the analyst-omission
+helper and so require the OpenAI SDK.
 `pyright` reports zero errors across `src/` and `scaffolding/`. Demo data is synthetic.
 
 **What the real source does and does not provide.** Global Fishing Watch publishes, per SAR
@@ -455,6 +457,8 @@ deliberate ceilings — what does not run here, and why it is not pretended to.
 
 ```bash
 # 1. Deterministic engine only — no dependencies, no API key
+python src/test_caution.py     # 76 of 79 checks; the rest need the SDK
+python src/eval_agent.py       # red-team harness, no dependencies
 python src/main.py --cross-reference-only
 
 # 2. Full pipeline
