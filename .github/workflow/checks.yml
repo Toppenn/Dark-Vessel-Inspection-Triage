@@ -1,0 +1,33 @@
+name: checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  bare:
+    name: bare interpreter (no dependencies)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The README claims the engine and its checks run with no API key, no
+      # network and no dependencies. This job is what makes that claim testable.
+      - run: python src/main.py --cross-reference-only
+        working-directory: .
+      - run: python src/test_caution.py
+      - run: python src/eval_agent.py
+
+  full:
+    name: with dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python src/test_caution.py
+      - run: python src/eval_agent.py
