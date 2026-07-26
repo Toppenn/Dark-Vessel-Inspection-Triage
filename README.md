@@ -628,7 +628,7 @@ src/                 the engine and the demo path
   main.py            orchestrator
   test_caution.py    79 checks: duty of caution, invariants, validator rules
   eval_agent.py      Phase 4.1 red-team harness: guardrail catch rate
-  validator_llm.py   structural check on the analyst response, before the factual ones
+  validate_structure.py  structural check on the analyst response, before the factual ones
   list_models.py     helper: list the models available to your API key
 
 scaffolding/         built, self-checking, NOT exercised by the demo path

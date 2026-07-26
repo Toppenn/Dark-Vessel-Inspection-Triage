@@ -17,7 +17,7 @@ import json
 import os
 import re
 
-import validator_llm
+import validate_structure
 
 from openai import OpenAI
 
@@ -429,8 +429,8 @@ def prioritise(dossier: dict) -> dict:
         if len(_omitted_candidates(dossier, retried)) < len(omitted):
             data = retried
 
-    structure = validator_llm.validate_analyst_structure(data)
-    if validator_llm.has_blockers(structure):
+    structure = validate_structure.validate_analyst_structure(data)
+    if validate_structure.has_blockers(structure):
         raise ValueError(
             "Analyst response is structurally unusable:\n"
             + "\n".join(f"- {message}" for _, _, message in structure))
