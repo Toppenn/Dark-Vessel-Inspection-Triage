@@ -2,6 +2,8 @@
 
 **NVIDIA Open Models Codefest 2026 — team submission**
 
+[![checks](https://github.com/Toppenn/Dark-Vessel-Inspection-Triage/actions/workflows/checks.yml/badge.svg)](https://github.com/Toppenn/Dark-Vessel-Inspection-Triage/actions/workflows/checks.yml)
+
 An agentic decision-support system that turns open satellite radar detections into
 prioritised, explainable inspection briefs for European fisheries control authorities.
 
