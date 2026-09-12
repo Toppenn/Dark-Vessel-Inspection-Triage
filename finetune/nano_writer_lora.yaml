@@ -1,0 +1,132 @@
+# LoRA SFT — Nemotron-3-Nano-30B-A3B as the inspection-brief writer.
+#
+# Derived from Automodel's own recipe for this model
+# (examples/llm_finetune/nemotron/nemotron_nano_v3_hellaswag_peft.yaml), with
+# three project-specific changes and one that is not optional:
+#
+#   * dataset -> ChatDataset over our curated OpenAI-format JSONL
+#   * mask_generation_prompt: true   <- NOT optional, see below
+#   * seq_length 16384               <- a dossier plus a full report is long
+#   * lower lr and more steps than the 100-step smoke recipe
+#
+# Why mask_generation_prompt matters here more than anywhere else: Nemotron is
+# a hybrid-reasoning model, and its chat template inserts an empty reasoning
+# block into every assistant turn that carries no reasoning_content. Training
+# on that block teaches the model to open and immediately close its reasoning
+# — and the failure this fine-tune exists to fix is a degenerate reasoning
+# loop. Leave it false and you are spending gradient on exactly the wrong
+# thing.
+#
+# exclude_modules ["*.out_proj"] is inherited from NVIDIA's recipe and must
+# stay: the Mamba-2 layers use custom kernels that consume out_proj.weight
+# directly, so LoRA cannot be applied there.
+#
+# Paths marked  <<SET>>  are filled in by sbatch_sft.sh from environment
+# variables; you can also edit them in place for an interactive run.
+#
+# Run on one DGX B300 node:
+#   automodel finetune/nano_writer_lora.yaml --nproc-per-node 8
+
+recipe: TrainFinetuneRecipeForNextTokenPrediction
+
+step_scheduler:
+  global_batch_size: 16
+  local_batch_size: 1
+  ckpt_every_steps: 100
+  val_every_steps: 50
+  max_steps: 400
+  num_epochs: 3
+
+dist_env:
+  backend: nccl
+  # First run pulls ~60 GB of weights; give the rendezvous room before it
+  # decides a rank is dead.
+  timeout_minutes: 90
+
+rng:
+  _target_: nemo_automodel.components.training.rng.StatefulRNG
+  seed: 1111
+  ranked: true
+
+model:
+  _target_: nemo_automodel.NeMoAutoModelForCausalLM.from_pretrained
+  pretrained_model_name_or_path: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+  torch_dtype: auto
+  trust_remote_code: true
+  attn_implementation: sdpa
+  backend:
+    _target_: nemo_automodel.components.models.common.BackendConfig
+    rms_norm: torch_fp32
+    linear: torch
+
+compile:
+  enabled: false
+
+checkpoint:
+  enabled: true
+  checkpoint_dir: <<SET>>/checkpoints/nano_writer_lora
+  model_save_format: safetensors
+  save_consolidated: final
+
+peft:
+  _target_: nemo_automodel.components._peft.lora.PeftConfig
+  # Mamba layers consume out_proj.weight in a custom kernel: LoRA cannot apply.
+  exclude_modules: ["*.out_proj"]
+  dim: 16
+  alpha: 32
+  use_triton: True
+
+distributed:
+  strategy: fsdp2
+  dp_size: none
+  tp_size: 1
+  cp_size: 1
+  ep_size: 4
+  sequence_parallel: false
+
+loss_fn:
+  _target_: nemo_automodel.components.loss.masked_ce.MaskedCrossEntropy
+
+dataset:
+  _target_: nemo_automodel.components.datasets.llm.ChatDataset
+  path_or_dataset_id: <<SET>>/sft/train.jsonl
+  seq_length: 16384
+  padding: do_not_pad
+  truncation: do_not_truncate
+  mask_generation_prompt: true
+  skip_invalid_samples: false   # a malformed line is a bug in curate.py, not noise
+
+packed_sequence:
+  packed_sequence_size: 0
+
+dataloader:
+  _target_: torchdata.stateful_dataloader.StatefulDataLoader
+  collate_fn: nemo_automodel.components.datasets.utils.default_collater
+  shuffle: True
+
+validation_dataset:
+  _target_: nemo_automodel.components.datasets.llm.ChatDataset
+  path_or_dataset_id: <<SET>>/sft/validation.jsonl
+  seq_length: 16384
+  padding: do_not_pad
+  truncation: do_not_truncate
+  mask_generation_prompt: true
+
+validation_dataloader:
+  _target_: torchdata.stateful_dataloader.StatefulDataLoader
+  collate_fn: nemo_automodel.components.datasets.utils.default_collater
+
+optimizer:
+  _target_: torch.optim.Adam
+  betas: [0.9, 0.999]
+  eps: 1e-8
+  lr: 5.0e-6
+  weight_decay: 0
+
+lr_scheduler:
+  lr_decay_style: cosine
+  min_lr: 5.0e-7
+
+# wandb:
+#   project: dark-vessel-triage
+#   name: nano-writer-lora
