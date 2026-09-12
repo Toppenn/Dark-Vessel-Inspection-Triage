@@ -1,30 +1,26 @@
 # Progress log
 
-## 12 Sept 2026, 05:00 CEST
+## 12 Sept 2026, ~05:30 CEST
 
 ### Done
-- `finetune/` pipeline written and pushed (branch `feature/ToppenAdvances`).
-- **Multi-scene red team: 2,374/2,374 cases across 177 generated scenes,
-  guardrail catch rate 1,843/1,843.** Up from 15 cases on 1 demo scene.
-  Reproduce: `scene_factory.py --n 200` then `harness_over_scenes.py`.
-- Cluster fully characterised — see `CLUSTER_NOTES.md`.
-- Container runtime unblocked (enroot XDG fix); image imports successfully.
-- Plan re-scoped from 8 GPUs to 1 after finding the QOS cap.
+- `finetune/` pipeline written and pushed.
+- **Multi-scene red team: 2,374/2,374 cases across 177 generated scenes**,
+  guardrail catch rate 1,843/1,843 — up from 15 cases on 1 demo scene.
+- Cluster characterised (`CLUSTER_NOTES.md`); enroot unblocked; shared venv.
+- Plan re-scoped 8 GPUs -> 1 after finding the QOS cap.
+- Held-out eval set at seed 10000, disjoint from training seeds 0–399.
 
-### Running
-- Job 6155 — import automodel container to `.sqsh` on /storage.
-- Job 6156 — teacher corpus, 120 scenes, Super-120B via build.nvidia.com,
-  validator-gated rejection sampling, 8 workers, 8 h limit.
+### In flight
+- 6155 import container to .sqsh
+- 6156 teacher corpus, 120 scenes  -> 6159 dependent run, 400 scenes
+- 6160 baseline eval, base nano writer, analyst fixed at Super-120B
+
+### Observed so far
+- Teacher throughput ~4 scenes/min at 8 workers.
+- Zero rejections in the first 20 scenes under `--strict`: Super-120B passes
+  the validator cleanly. Report this honestly — it means the gap the fine-tune
+  must close is between "large model rarely trips the guardrail" and "small
+  model cannot produce output at all", not a muddy middle.
 
 ### Not started
-- LoRA SFT (`sbatch_sft_1gpu.sh`, needs the corpus + the .sqsh).
-- Base-vs-adapter eval (`eval_live.py`).
-- README update with the 2,374/2,374 number.
-- The "where this sits" section still missing from README (flagged in
-  PROJECT.md as the top documentation task).
-
-### Numbers to capture when 6156 finishes
-- Teacher first-pass clean rate (how often Super-120B passed the validator with
-  no retry) — a result in its own right.
-- Scenes that exhausted the 3-attempt budget.
-- Case coverage of the curated training set.
+- LoRA SFT; adapter eval; README "Where this sits" section.

@@ -1,4 +1,0 @@
-DVIT_SHARED=/storage/hackathon_teams/omc-team14
-DVIT_WORK=/storage/hackathon_teams/omc-team14/dvit
-HF_HOME=/storage/hackathon_teams/omc-team14/hf
-partition=hackathon  gpus/node=8

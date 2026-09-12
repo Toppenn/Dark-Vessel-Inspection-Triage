@@ -6,3 +6,8 @@ last_run.json
 venv/
 last_raw_response.txt
 datasets/
+
+data/
+logs/
+**/__pycache__/
+last_raw_response.txt
