@@ -1,0 +1,26 @@
+# The fine-tuning pipeline. Deliberately separate from requirements.txt so the
+# engine, the validator and the 79 checks stay installable in ten seconds on a
+# bare CPU box — and so nothing here is needed to reproduce the headline
+# guardrail result (scene_factory.py and harness_over_scenes.py import only the
+# standard library and src/).
+#
+#   python3 -m venv $DVIT_SHARED/venv
+#   $DVIT_SHARED/venv/bin/pip install -r finetune/requirements-finetune.txt
+
+# Teacher generation and live evaluation talk to an OpenAI-compatible endpoint
+# (build.nvidia.com, or a local vLLM server).
+openai>=1.30.0
+
+# Pre-fetching model weights on a CPU node so the GPU job does not spend its
+# allocation downloading 60 GB.
+huggingface_hub[cli]>=0.26.0
+
+# --- optional -----------------------------------------------------------------
+# Surface-vocabulary generation. Without it, surface_vocab.STATIC_POOL is used
+# and the pipeline still runs end to end with no endpoint and no network.
+# data-designer>=0.1.0
+
+# Only needed inside the AutoModel training container, which already ships them.
+# Listed so the dependency is visible rather than implicit.
+# datasets>=3.0.0
+# transformers>=5.3.0

@@ -1,36 +1,43 @@
-# LoRA SFT — Nemotron-3-Nano-30B-A3B as the inspection-brief writer.
+# LoRA SFT — Nemotron-3-Nano-30B-A3B as the inspection-brief writer, ONE GPU.
 #
-# Derived from Automodel's own recipe for this model
-# (examples/llm_finetune/nemotron/nemotron_nano_v3_hellaswag_peft.yaml), with
-# three project-specific changes and one that is not optional:
+# This is the variant that runs under the omc-team14 QOS, which caps the whole
+# team at a single B300 (see CLUSTER_NOTES.md). At 275 GB HBM one card holds the
+# ~60 GB BF16 checkpoint with room to spare, so the cap costs parallelism rather
+# than capability.
 #
-#   * dataset -> ChatDataset over our curated OpenAI-format JSONL
-#   * mask_generation_prompt: true   <- NOT optional, see below
-#   * seq_length 16384               <- a dossier plus a full report is long
-#   * lower lr and more steps than the 100-step smoke recipe
+# Derived from two NVIDIA recipes for this exact model:
+#   examples/llm_finetune/nemotron/nemotron_nano_v3_singlegpu_lora.yaml
+#   examples/llm_finetune/nemotron/nemotron_nano_v3_hellaswag_peft.yaml
+# with the dataset swapped for our curated corpus.
 #
-# Why mask_generation_prompt matters here more than anywhere else: Nemotron is
-# a hybrid-reasoning model, and its chat template inserts an empty reasoning
-# block into every assistant turn that carries no reasoning_content. Training
-# on that block teaches the model to open and immediately close its reasoning
-# — and the failure this fine-tune exists to fix is a degenerate reasoning
-# loop. Leave it false and you are spending gradient on exactly the wrong
-# thing.
+# Three settings are NOT preferences:
 #
-# exclude_modules ["*.out_proj"] is inherited from NVIDIA's recipe and must
-# stay: the Mamba-2 layers use custom kernels that consume out_proj.weight
-# directly, so LoRA cannot be applied there.
+#   exclude_modules: ["*.out_proj"]
+#     Nemotron-3-Nano is a hybrid Mamba-2 / Transformer MoE. The Mamba-2 layers
+#     consume out_proj.weight inside a custom kernel where LoRA cannot apply.
 #
-# Paths marked  <<SET>>  are filled in by sbatch_sft.sh from environment
-# variables; you can also edit them in place for an interactive run.
+#   mask_generation_prompt: true
+#     The chat template injects an empty reasoning block into every assistant
+#     turn that carries no reasoning_content. Training with loss on that block
+#     teaches the model to open its reasoning and immediately close it — and the
+#     failure this fine-tune exists to fix is a degenerate reasoning loop.
 #
-# Run on one DGX B300 node:
-#   automodel finetune/nano_writer_lora.yaml --nproc-per-node 8
+#   ep_size: 1 + activation_checkpointing + use_memory_efficient_lora
+#     All experts local on one device; recompute block activations; do not keep
+#     the LoRA-A activation. Together these are what make 30B fit comfortably.
+#
+# Paths marked  <<SET>>  are filled in by sbatch_sft_1gpu.sh from $DVIT_DATA.
+#
+# Run:
+#   sbatch finetune/sbatch_sft_1gpu.sh
+# or interactively, inside the container:
+#   OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 \
+#     automodel finetune/nano_writer_lora_1gpu.yaml --nproc-per-node 1
 
 recipe: TrainFinetuneRecipeForNextTokenPrediction
 
 step_scheduler:
-  global_batch_size: 16
+  global_batch_size: 8
   local_batch_size: 1
   ckpt_every_steps: 100
   val_every_steps: 50
@@ -39,8 +46,8 @@ step_scheduler:
 
 dist_env:
   backend: nccl
-  # First run pulls ~60 GB of weights; give the rendezvous room before it
-  # decides a rank is dead.
+  # The first run merges split MoE expert tensors on CPU and may pull ~60 GB;
+  # give the rendezvous room before it decides a rank is dead.
   timeout_minutes: 90
 
 rng:
@@ -65,14 +72,13 @@ compile:
 
 checkpoint:
   enabled: true
-  checkpoint_dir: <<SET>>/checkpoints/nano_writer_lora
+  checkpoint_dir: <<SET>>/checkpoints/nano_writer_lora_1gpu
   model_save_format: safetensors
   save_consolidated: final
 
 peft:
   _target_: nemo_automodel.components._peft.lora.PeftConfig
-  # Mamba layers consume out_proj.weight in a custom kernel: LoRA cannot apply.
-  exclude_modules: ["*.out_proj"]
+  exclude_modules: ["*.out_proj"]   # Mamba-2 custom kernel; LoRA cannot apply
   dim: 16
   alpha: 32
   use_triton: True
@@ -132,4 +138,4 @@ lr_scheduler:
 
 # wandb:
 #   project: dark-vessel-triage
-#   name: nano-writer-lora
+#   name: nano-writer-lora-1gpu

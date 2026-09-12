@@ -17,10 +17,16 @@ makes it legitimate rather than a suspicion generator: **the duty of caution run
 in both directions, and it is guaranteed in code, not in the prompt**.
 
 Scaffolding for all **five roadmap phases** stands and is **verified by
-executable checks** (no key, no network, no cost). What remains is not code but
-**execution with external resources** (real SAR imagery plus a GPU to train; a
-GFW token and an NVIDIA key for live data and models) — and the system is built
-with those integration points explicitly marked.
+executable checks** (no key, no network, no cost).
+
+**Codefest update (September 2026).** Two of the external resources arrived — an
+NVIDIA API key and GPU time on Curiosity v2 — and two things were done with them.
+First, the guardrail's evidence base was widened from 15 adversarial cases on one
+demo scene to **2,374 cases across 177 independently generated scenes**, all on
+expected severity. Second, a fine-tuning pipeline was built (`finetune/`) to close
+the one capability gap the model table records: the 30B model cannot complete the
+writer task, and the whole self-hosting argument is weaker while the system needs
+a 120B model. Real SAR imagery and detector training remain outside.
 
 ---
 
@@ -97,10 +103,11 @@ would observe an angula boat.**
 | **2.1** Vision fine-tune + TensorRT | Optimised lightweight detector | `train_detector.py`: validates/splits/emits `data.yaml`; TRT export as a GPU seam | Self-check: curate→validate→split→yaml; rejects a corrupt label |
 | **2.2** Agentic system prompt | Surveillance agent role | `agents.py` (analyst + writer); documented in `docs/PROMPTS.md` | Rule by rule, each with the check that backs it |
 | **3** Agentic flow (ReAct) | Autonomous five-step loop | Complete (see §3) | End-to-end deterministic pipeline |
-| **4.1** Reasoning evaluation | Avoid hallucination and false positives | `eval_agent.py` (guardrail red-team); **fixed-infrastructure** suppression in the engine | 12/12 adversarial cases caught, 15/15 overall |
+| **4.1** Reasoning evaluation | Avoid hallucination and false positives | `eval_agent.py` (guardrail red-team); `finetune/harness_over_scenes.py` (the same red team over generated worlds); **fixed-infrastructure** suppression in the engine | 12/12 adversarial, 15/15 overall on the demo scene; **1,843/1,843 adversarial, 2,374/2,374 overall across 177 generated scenes** |
 | **4.2** Latency optimisation | Measure the full flow | `latency.py`: per-stage breakdown | Deterministic path ~1 ms / 13 detections |
 | **5.1** Frontend | Alerts for the field officer | `app.py` (Streamlit + pydeck map) | Headless AppTest |
-| **5.2** Documentation | Prompts and open models | `docs/PROMPTS.md`, this report | — |
+| **5.2** Documentation | Prompts and open models | `docs/PROMPTS.md`, `docs/WHY_AN_LLM.md`, this report | — |
+| **6** Domain fine-tune (Codefest) | Make the small open model usable for the writer role | `finetune/`: deterministic scene generation, validator-gated distillation from Super-120B, curation, LoRA SFT on Nemotron-3-Nano-30B-A3B, live before/after evaluation | Pipeline runs end to end; corpus generated; **adapter not yet trained — no result claimed** |
 
 **Packaging (5.x):** `Dockerfile` (CPU-only app) plus `docs/DEPLOY_NIM_OCI.md`
 (NIM on OCI, GPU shapes, container wiring).
@@ -139,9 +146,28 @@ module runs its own self-check and imports the core through one shared bootstrap
 | `latency.py` | Latency breakdown | 4.2 |
 | `app.py` | Streamlit triage view | 5.1 |
 
-**Docs and packaging:** `docs/PROMPTS.md`, `docs/DEPLOY_NIM_OCI.md`, this report,
-`Dockerfile`, `requirements.txt` (core, installable in ten seconds),
-`requirements-train.txt` (heavy, GPU, deliberately isolated).
+**Fine-tuning and multi-scene evaluation — `finetune/`.** Added during the
+Codefest. Imports `src/` (it runs the real engine and the real validator); nothing
+in `src/` imports it. No generated artefact is committed.
+
+| File | Role |
+|---|---|
+| `scene_factory.py` | Synthetic scenes: facts sampled deterministically from named case templates, never model-generated |
+| `surface_vocab.py` | NeMo Data Designer config — varies place names, designations and working language only |
+| `gen_teacher.py` | Distillation from Super-120B, gated by `validate.py`: a sample enters the corpus only if the report-blocking rules accept it |
+| `curate.py` | Dedup, length filter, per-case coverage report, split by scene rather than by sample |
+| `harness_over_scenes.py` | Runs `eval_agent.build_cases()` over every generated scene |
+| `eval_live.py` | Measures the *model* (collapse / unparseable / blocked / clean), where `eval_agent.py` measures the *checker* |
+| `preflight_dataset.py` | Loads the corpus exactly as the trainer will, before a job is submitted |
+| `nano_writer_lora_1gpu.yaml` / `_8gpu.yaml` | NeMo AutoModel LoRA recipes |
+| `sbatch_*.sh`, `cluster_env.sh` | Slurm jobs and one place for every cluster-specific value |
+| `CLUSTER_NOTES.md`, `CURATOR.md` | What the cluster taught us; where NeMo Curator fits and why not yet |
+
+**Docs and packaging:** `docs/PROMPTS.md`, `docs/WHY_AN_LLM.md`,
+`docs/DEPLOY_NIM_OCI.md`, this report, `Dockerfile`, `requirements.txt` (core,
+installable in ten seconds), `requirements-train.txt` (detector training, GPU,
+deliberately isolated), `finetune/requirements-finetune.txt` (the LLM pipeline,
+also isolated).
 
 ---
 
@@ -150,7 +176,8 @@ module runs its own self-check and imports the core through one shared bootstrap
 | Check | Result |
 |---|---|
 | `test_caution.py` — duty of caution, invariants, validator rules | **79/79** |
-| `eval_agent.py` — guardrail against LLM hallucination | **15/15** (12/12 adversarial) |
+| `eval_agent.py` — guardrail against LLM hallucination, demo scene | **15/15** (12/12 adversarial) |
+| `harness_over_scenes.py` — the same red team over 177 generated scenes | **2,374/2,374** (1,843/1,843 adversarial, 531/531 controls) |
 | `vision.py` — CFAR recovery on a synthetic scene | **4/4 targets**, 0 false |
 | `curation.py` — candidate YOLO labels | 3/3, valid format |
 | `train_detector.py` — training-ready dataset + corrupt-label rejection | OK |
@@ -190,6 +217,18 @@ What does **not** run in this repository, marked and not pretended:
 - **GFW HTTP layer / live model calls:** the GFW→schema mapping is tested against
   the real data model; the HTTP layer and live Nemotron models need a token, a
   key and network, with a fallback to demo data.
+- **The fine-tune is distillation, and no result is claimed yet.** The pipeline in
+  `finetune/` runs end to end and the corpus generates, but no adapter has been
+  trained and no before/after number exists. When it does, three things must be
+  said with it: the corpus is synthetic; it is filtered by the same validator used
+  to score the outcome (mitigated by a disjoint held-out seed range, not
+  eliminated); and the result would show that the small model produces output the
+  guardrail accepts more often, not that it reasons better.
+- **The multi-scene harness measures the checker, not the world.** 2,374/2,374 says
+  the guardrail generalises past the demo geometry. It does not say the guardrail
+  is complete — it catches the failure modes we thought to encode. Catching
+  *addition* rather than *contradiction* remains open, and is the item that most
+  needs outside input.
 
 The `ponytail:` convention marks every cut corner in the code with its ceiling
 and its route to improvement.
@@ -204,8 +243,12 @@ seams already defined:
 1. **Real SAR data:** download Sentinel-1 GRD chips (Copernicus Data Space / ASF)
    as `.npy` → `curation.py --input`.
 2. **Verified labels:** review the CFAR candidates (clear `pending`).
-3. **GPU and training:** `pip install -r requirements-train.txt` on a GPU host →
-   `train_detector.py --train` → TensorRT `.engine` → the `backend='trt'` seam.
+3. **GPU and detector training:** `pip install -r requirements-train.txt` on a GPU
+   host → `train_detector.py --train` → TensorRT `.engine` → the `backend='trt'`
+   seam. This is the *vision* detector and is unrelated to item 3b.
+3b. **LLM fine-tune:** `finetune/` — generate the corpus, LoRA-SFT
+   Nemotron-3-Nano-30B-A3B, evaluate base vs adapter on held-out scenes. Needs one
+   GPU and an API key or a self-hosted teacher; see `finetune/README.md`.
 4. **Live data:** `GFW_TOKEN` (real SAR detections) and `NVIDIA_API_KEY`, or a
    self-hosted NIM (reasoning).
 5. **Real polygons:** load Natura 2000 / WDPA layers as GeoJSON geometry

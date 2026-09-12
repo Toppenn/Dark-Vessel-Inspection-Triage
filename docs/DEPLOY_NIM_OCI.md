@@ -5,6 +5,13 @@ run **inside the authority's own environment** — no enforcement data crosses a
 vendor boundary. This note shows how to make that literal: run a Nemotron NIM on
 an Oracle Cloud (OCI) GPU shape and point the app at it.
 
+> **Scope.** OCI is used here as one concrete example of "somewhere the authority
+> controls". It is not where this project's Codefest work ran: that was Curiosity
+> v2 (DGX B300, Slurm with enroot/pyxis), documented in
+> [`../finetune/CLUSTER_NOTES.md`](../finetune/CLUSTER_NOTES.md). The deployment
+> argument and the hackathon compute are different things and should not be read
+> as the same one.
+
 There is **no code change**. The agent layer (`src/agents.py`) already speaks the
 OpenAI-compatible protocol against `NVIDIA_BASE_URL`. A NIM exposes exactly that
 protocol on `/v1`. Self-hosting is one environment variable:
@@ -30,16 +37,23 @@ The two containers, side by side:
 The NIM needs to fit the model's weights in VRAM. Match the shape to the
 Nemotron variant you serve (`NEMOTRON_MODEL`):
 
-| Model | Rough VRAM | OCI shape (example) |
+| Model | Weights (BF16) | Minimum shape |
 |---|---|---|
-| `nemotron-3-nano-30b-a3b` | ~1× 40–80 GB GPU | `VM.GPU.A10.2` / `VM.GPU.A100.1` |
-| `nemotron-3-super-120b-a12b` (default) | 2–4× 80 GB | `BM.GPU.A100-v2.8` / `BM.GPU.H100.8` |
-| `nemotron-3-ultra-550b-a55b` | 8× 80 GB | `BM.GPU.H100.8` |
+| `nemotron-nano-3-30b-a3b` | ~60 GB | 1× 80 GB (`VM.GPU.A100.1` / H100). **An A10 at 24 GB will not hold it.** Measured loading comfortably on a single 275 GB B300. |
+| `nemotron-3-super-120b-a12b` (default) | ~240 GB | 4× 80 GB (`BM.GPU.A100-v2.8` / `BM.GPU.H100.8`) |
+| `nemotron-3-ultra-550b-a55b` | ~1.1 TB | 8× 80 GB or more (`BM.GPU.H100.8`) |
 
-For a hackathon demo the **nano** model on a single A10/A100 is the cheapest path
-that runs end to end; set `NEMOTRON_MODEL=nvidia/nemotron-3-nano-30b-a3b` and you
-can even run the *analyst* on nano and keep the *writer* larger via
-`ANALYST_MODEL` / `WRITER_MODEL`.
+FP8 variants exist for nano and super and roughly halve these figures; Blackwell
+has native FP8/FP4 support, so on a B300 the FP8 super is the practical choice for
+a single-node teacher.
+
+**Do not use nano as the writer without the LoRA adapter.** On the full dossier the
+base nano model collapses into a degenerate repetition loop and never produces an
+object — see the model table in the README, and `finetune/` for the fine-tune that
+exists to fix exactly this. The supported split today is the *analyst* on nano and
+the *writer* on super, via `ANALYST_MODEL` / `WRITER_MODEL`; once the adapter is
+trained and evaluated, a nano-only deployment becomes the cheapest path that
+actually runs end to end, which is the point of that work.
 
 Provision the instance from the OCI console (Compute → Instances → the GPU shape
 above) using the **NVIDIA GPU Cloud Machine Image** (Oracle Marketplace), which
@@ -60,7 +74,7 @@ The exact image name and tag are **model-specific and versioned** — copy them
 from the model's *Deploy → Docker* tab on build.nvidia.com. They look like:
 
 ```bash
-export NIM_IMAGE=nvcr.io/nim/nvidia/nemotron-3-nano-30b-a3b:latest   # tag from the Deploy tab
+export NIM_IMAGE=nvcr.io/nim/nvidia/nemotron-nano-3-30b-a3b:latest   # tag from the Deploy tab
 docker pull "$NIM_IMAGE"
 ```
 
@@ -89,14 +103,14 @@ and the app sends it verbatim in the `model` field.
 ## 4. Point the app at the NIM
 
 ```bash
-docker build -t pesca-furtiva .
+docker build -t dark-vessel-triage .
 docker run -d --name app \
   -e NVIDIA_BASE_URL=http://<nim-host>:8000/v1 \
   -e NVIDIA_API_KEY="$NGC_API_KEY" \
   -e NEMOTRON_MODEL=<served-id-from-step-3> \
   -e GFW_TOKEN="$GFW_TOKEN" \
   -p 8501:8501 \
-  pesca-furtiva
+  dark-vessel-triage
 ```
 
 A self-hosted NIM does not check the API key, but the OpenAI client still sends
@@ -139,7 +153,7 @@ The deterministic engine needs no model, so verify it independently first
 (inside the app container, no GPU required):
 
 ```bash
-docker run --rm pesca-furtiva python src/main.py --cross-reference-only
+docker run --rm dark-vessel-triage python src/main.py --cross-reference-only
 ```
 
 Then confirm the reasoning layer reaches the NIM:

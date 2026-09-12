@@ -1,0 +1,31 @@
+# Line endings.
+#
+# This repository is edited on Windows and run on a Linux cluster. Git on Windows
+# with core.autocrlf=true will otherwise commit CRLF into shell scripts, and the
+# cluster then fails with:
+#
+#   /var/spool/slurmd/job00000/slurm_script: line 2: $'\r': command not found
+#
+# which is a genuinely miserable hour to debug. Force LF on everything the
+# cluster executes or parses, whatever the checkout platform.
+
+* text=auto eol=lf
+
+*.sh        text eol=lf
+*.py        text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf
+*.json      text eol=lf
+*.jsonl     text eol=lf
+*.md        text eol=lf
+*.txt       text eol=lf
+Dockerfile  text eol=lf
+LICENSE     text eol=lf
+
+# Binary, never converted.
+*.png       binary
+*.jpg       binary
+*.npy       binary
+*.sqsh      binary
+*.engine    binary
+*.safetensors binary

@@ -13,12 +13,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # The README claims the engine and its checks run with no API key, no
-      # network and no dependencies. This job is what makes that claim testable.
+      # The README claims the engine, its checks and both red teams run with no
+      # API key, no network and no dependencies. This job is what makes that
+      # claim testable rather than asserted.
       - run: python src/main.py --cross-reference-only
-        working-directory: .
       - run: python src/test_caution.py
       - run: python src/eval_agent.py
+      # The multi-scene harness: the same 15 mutations over independently
+      # generated worlds. 60 scenes keeps this under a minute and still covers
+      # every failure family. The README's headline number comes from 200.
+      - run: python finetune/scene_factory.py --n 60 --out data/ci_scenes.jsonl
+      - run: python finetune/harness_over_scenes.py --scenes data/ci_scenes.jsonl
 
   full:
     name: with dependencies
@@ -31,3 +36,5 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python src/test_caution.py
       - run: python src/eval_agent.py
+      - run: python finetune/scene_factory.py --n 60 --out data/ci_scenes.jsonl
+      - run: python finetune/harness_over_scenes.py --scenes data/ci_scenes.jsonl

@@ -12,11 +12,18 @@ Most review comments on this project have been about a convention, not a bug.
 ```bash
 python src/main.py --cross-reference-only   # engine, no dependencies, no key
 python src/test_caution.py                  # 76 of 79 checks without the SDK
-python src/eval_agent.py                    # red-team harness
+python src/eval_agent.py                    # red team, demo scene
+python finetune/scene_factory.py --n 200 --out data/scenes.jsonl
+python finetune/harness_over_scenes.py --scenes data/scenes.jsonl
 ```
 
-All three must pass. If you have the OpenAI SDK installed, `test_caution.py` must
-report 79/79.
+All five must pass, and none of them needs an API key, a network or a GPU. If you have
+the OpenAI SDK installed, `test_caution.py` must report 79/79.
+
+The last two are the multi-scene red team: the same mutations as `eval_agent.py`, run
+over hundreds of independently generated worlds. A validator rule that holds only
+because of the demo scene's geometry passes `eval_agent.py` and fails here — which is
+the whole reason it exists.
 
 ## The rule that matters most
 
@@ -42,7 +49,11 @@ real run. If you add one:
   well-formed case it must leave alone. The second matters more — a rule that fires
   on correct output is worse than no rule, because it teaches people to ignore
   warnings.
-- Add the adversarial case to `src/eval_agent.py` if it is a new failure family.
+- Add the adversarial case to `src/eval_agent.py` if it is a new failure family. It
+  is picked up automatically by `finetune/harness_over_scenes.py`, so a new family is
+  immediately tested across every generated world as well as the demo scene.
+- Run the multi-scene harness before you push. If the new rule passes on the demo
+  scene and fails on generated ones, it is fitted to the demo data.
 - Choose the severity deliberately. BLOCKER means a false statement could reach an
   inspector. WARNING means the output is degraded but safe.
 
@@ -53,6 +64,20 @@ produce a figure, a position, a distance or a classification is out of scope for
 repository, whatever else it improves.
 
 Missing critical data must raise, not default. Absence of data is never evidence.
+
+## Adding to `finetune/`
+
+`finetune/` is the fine-tuning and evaluation pipeline. Two rules specific to it:
+
+- **Facts are never model-generated, at training time either.** `scene_factory.py`
+  samples the facts and `src/analysis.py` computes the dossier. A language model that
+  invented a dossier would put its own errors into the supervision signal and make the
+  project's governing rule false at training time as well as at inference time. Data
+  Designer varies the *surface* — names, designations, working language — and nothing
+  else.
+- **Generated artefacts are never committed.** `data/`, `logs/`, corpora and
+  checkpoints are all reproducible from a seed or a job script. Cluster-specific
+  values belong in `cluster_env.sh`, not scattered through job scripts.
 
 ## Scaffolding
 

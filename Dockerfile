@@ -15,6 +15,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # scaffolding directory is needed because the UI lives there; the training and
 # curation modules it also contains are inert without their optional
 # dependencies, which this CPU image deliberately does not install.
+# `finetune/` is deliberately absent: it is a Slurm/cluster workflow that trains
+# and evaluates models, not part of the application. It has its own dependency
+# file (finetune/requirements-finetune.txt) for the same reason.
 COPY src/ ./src/
 COPY scaffolding/ ./scaffolding/
 COPY demo_data/ ./demo_data/

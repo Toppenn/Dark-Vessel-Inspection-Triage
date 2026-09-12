@@ -176,13 +176,21 @@ provenance is written next to it.
 
 ```
 src/           the engine and the demo path
+finetune/      the fine-tuning and multi-scene evaluation pipeline
 scaffolding/   built, self-checking, NOT exercised by the demo path
 demo_data/     synthetic data whose schema mirrors the real sources
-docs/          prompts, deployment, closing report, this file
+docs/          prompts, deployment, closing report, the LLM argument
+conventions.md this file, at the root because it governs the whole tree
 ```
 
 **Nothing in `src/` imports from `scaffolding/`.** That is checkable in one
 command, which is why the separation is a directory and not a paragraph.
+
+`finetune/` may import from `src/` — it runs the real engine and the real
+validator, which is the point of it — but nothing in `src/` imports from
+`finetune/`. Generated artefacts (`data/`, `logs/`, corpora, checkpoints) are
+never committed: they are reproducible from a seed or a job script, and a
+repository that carries them stops being auditable in one clone.
 
 Imports are flat (`import analysis`), because the project runs as
 `python src/main.py`, not as an installed package. A scaffolding module that
@@ -216,9 +224,14 @@ program: there is no package called `src` on the path.
 
 ```bash
 python src/test_caution.py            # all checks pass
-python src/eval_agent.py              # 15/15
+python src/eval_agent.py              # 15/15 on the demo scene
 python src/main.py --cross-reference-only
 pyright                               # 0 errors
+
+# The same red team over independently generated worlds. A rule fitted to the
+# demo scene's geometry passes eval_agent.py and fails here.
+python finetune/scene_factory.py --n 200 --out data/scenes.jsonl
+python finetune/harness_over_scenes.py --scenes data/scenes.jsonl
 ```
 
 And once, with a key: `python src/main.py`. The deterministic path passing
