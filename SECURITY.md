@@ -65,7 +65,7 @@ output you expected. For a guardrail failure, the most useful report is a
 reproducing case — a dossier and a model response that should have been blocked and
 was not.
 
-We are four students, not a security team. Expect an acknowledgement within a week
+We are three students, not a security team. Expect an acknowledgement within a week
 and an honest answer about whether and when we can fix it. If we cannot, we will say
 so and document the limitation rather than leave it implied.
 

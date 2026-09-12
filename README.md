@@ -471,7 +471,7 @@ gen_teacher.py         Super-120B writes briefs;             (CPU, API-bound)
 curate.py              dedup, length filter, leak-free split (CPU, seconds)
    |
    v
-nano_writer_lora.yaml  LoRA SFT of Nano-30B-A3B              (1 GPU)
+nano_writer_lora_1gpu.yaml   LoRA SFT of Nano-30B-A3B         (1 GPU)
    |
    v
 eval_live.py           held-out scenes, base vs adapter      (1 GPU or API)
@@ -681,7 +681,9 @@ finetune/            Codefest: closing the small-model gap
   curate.py          dedup, length filter, coverage report, leak-free split
   harness_over_scenes.py   the existing red team, over hundreds of worlds
   eval_live.py       live-model measurement: the model, not the guardrail
-  nano_writer_lora.yaml    NeMo AutoModel LoRA recipe (8-GPU and 1-GPU variants)
+  nano_writer_lora_1gpu.yaml   AutoModel LoRA recipe — the one that runs here
+  nano_writer_lora_8gpu.yaml   the same for a whole node; not usable under a 1-GPU cap
+  requirements-finetune.txt    the pipeline's dependencies, kept out of requirements.txt
   preflight_dataset.py     load the corpus as the trainer will, before the job
   sbatch_*.sh        Slurm jobs for each stage
   cluster_env.sh     every cluster-specific value, in one place
@@ -731,7 +733,7 @@ Not claimed today. Fisheries is where it gets proven.
 
 ## Team
 
-Four undergraduate students in Spain (Universidad Carlos III de Madrid and Universidad
+Three undergraduate students in Spain (Universidad Carlos III de Madrid and Universidad
 Complutense). Work was divided across agent orchestration, geospatial and regulatory data,
 model serving, and product and evaluation; commits were made from a shared setup, so the git
 history does not map one-to-one onto contributors.
@@ -748,3 +750,7 @@ MIT — see `LICENSE`.
 
 All planned data sources are open public data. Model weights are open and used under their
 respective licenses; see the model card on build.nvidia.com.
+
+## Attribution
+
+Vessel detection data provided by Global Fishing Watch (globalfishingwatch.org).
