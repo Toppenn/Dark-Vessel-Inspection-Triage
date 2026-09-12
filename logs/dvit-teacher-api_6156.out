@@ -16,3 +16,5 @@ case coverage:
   matched_open_water         88
   exactly_threshold_dark     39
   10/120 scenes | 20 samples | 3.1 min
+  20/120 scenes | 40 samples | 4.9 min
+  30/120 scenes | 60 samples | 7.9 min

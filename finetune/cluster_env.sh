@@ -38,7 +38,7 @@ mkdir -p "$DVIT_WORK" "$DVIT_DATA" "$HF_HOME" "$DVIT_WORK/logs" 2>/dev/null
 # ASK THE MENTORS which images are cached locally for the B300 nodes; pulling a
 # multi-GB image on every job is slow and the Blackwell-Ultra-compatible tags
 # move fast. These are the upstream defaults.
-export DVIT_AUTOMODEL_IMAGE="${DVIT_AUTOMODEL_IMAGE:-nvcr.io/nvidia/nemo-automodel:26.04.00}"
+export DVIT_AUTOMODEL_IMAGE="${DVIT_AUTOMODEL_IMAGE:-$DVIT_SHARED/automodel-26.04.sqsh}"
 export DVIT_VLLM_IMAGE="${DVIT_VLLM_IMAGE:-vllm/vllm-openai:latest}"
 
 # Enroot/pyxis caches the converted image here; keep it off $HOME.
