@@ -24,7 +24,7 @@ from openai import OpenAI
 BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
 
 # Nemotron 3 family, all with free hosted endpoints on build.nvidia.com:
-#   nvidia/nemotron-3-nano-30b-a3b      fast, 1M context, tool calling
+#   nvidia/nemotron-nano-3-30b-a3b      fast, 1M context, tool calling
 #   nvidia/nemotron-3-super-120b-a12b   agentic reasoning, good default
 #   nvidia/nemotron-3-ultra-550b-a55b   largest, noticeably slower
 #

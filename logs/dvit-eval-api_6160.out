@@ -1,0 +1,7 @@
+DVIT_SHARED=/storage/hackathon_teams/omc-team14
+DVIT_WORK=/storage/hackathon_teams/omc-team14/dvit
+HF_HOME=/storage/hackathon_teams/omc-team14/hf
+partition=hackathon  gpus/node=8
+  5/40  (1.2 min)
+  10/40  (1.8 min)
+  15/40  (2.4 min)
