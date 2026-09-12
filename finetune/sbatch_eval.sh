@@ -8,6 +8,8 @@
 #   source finetune/cluster_env.sh
 #   RUN_DIR=$DVIT_WORK/runs/sft_123456 sbatch finetune/sbatch_eval.sh
 #
+#SBATCH -A omc-hackathon
+#SBATCH -p hackathon
 #SBATCH -J dvit-eval
 #SBATCH -N 1
 #SBATCH --gpus-per-node=8
@@ -17,7 +19,7 @@
 #SBATCH --error=logs/%x_%j.err
 
 set -euo pipefail
-source "$(dirname "$0")/cluster_env.sh"
+source "${SLURM_SUBMIT_DIR:-$(dirname "$0")/..}/finetune/cluster_env.sh"
 export TMPDIR="/raid/${SLURM_JOB_ID}/tmp"; mkdir -p "$TMPDIR"
 
 RUN_DIR="${RUN_DIR:?set RUN_DIR to the sbatch_sft.sh output directory}"

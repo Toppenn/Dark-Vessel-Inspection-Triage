@@ -9,8 +9,8 @@
 # sinfo -o "%P %l %D %G"        -> partitions, time limits, GPUs per node
 # sacctmgr show assoc user=$USER format=account,partition   -> your account
 # scontrol show partition       -> per-partition limits
-export DVIT_ACCOUNT="${DVIT_ACCOUNT:-}"          # leave empty if -A is not required
-export DVIT_PARTITION="${DVIT_PARTITION:-batch}" # <-- CONFIRM with sinfo
+export DVIT_ACCOUNT="${DVIT_ACCOUNT:-omc-hackathon}"
+export DVIT_PARTITION="${DVIT_PARTITION:-hackathon}"
 export DVIT_GPUS_PER_NODE="${DVIT_GPUS_PER_NODE:-8}"
 
 # --- Storage ------------------------------------------------------------------
@@ -20,7 +20,7 @@ export DVIT_GPUS_PER_NODE="${DVIT_GPUS_PER_NODE:-8}"
 # 300 GB; find yours and set DVIT_SHARED.
 #
 #   ls -ld /shared/* /project/* /team/* 2>/dev/null    # <-- CONFIRM the path
-export DVIT_SHARED="${DVIT_SHARED:-$HOME/shared}"     # <-- SET THIS
+export DVIT_SHARED="${DVIT_SHARED:-/storage/hackathon_teams/omc-team14}"
 export DVIT_WORK="${DVIT_WORK:-$DVIT_SHARED/dvit}"
 export DVIT_DATA="${DVIT_DATA:-$DVIT_WORK/data}"
 

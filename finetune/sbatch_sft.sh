@@ -4,6 +4,8 @@
 #   source finetune/cluster_env.sh
 #   sbatch finetune/sbatch_sft.sh
 #
+#SBATCH -A omc-hackathon
+#SBATCH -p hackathon
 #SBATCH -J dvit-sft
 #SBATCH -N 1
 #SBATCH --gpus-per-node=8
@@ -14,7 +16,7 @@
 #SBATCH --signal=B:USR1@300
 
 set -euo pipefail
-source "$(dirname "$0")/cluster_env.sh"
+source "${SLURM_SUBMIT_DIR:-$(dirname "$0")/..}/finetune/cluster_env.sh"
 
 export TMPDIR="/raid/${SLURM_JOB_ID}/tmp"
 mkdir -p "$TMPDIR"

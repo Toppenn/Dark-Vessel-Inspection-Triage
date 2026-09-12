@@ -8,6 +8,8 @@
 #   source finetune/cluster_env.sh
 #   sbatch finetune/sbatch_gen_teacher.sh
 #
+#SBATCH -A omc-hackathon
+#SBATCH -p hackathon
 #SBATCH -J dvit-teacher
 #SBATCH -N 1
 #SBATCH --gpus-per-node=8
@@ -17,7 +19,7 @@
 #SBATCH --error=logs/%x_%j.err
 
 set -euo pipefail
-source "$(dirname "$0")/cluster_env.sh"
+source "${SLURM_SUBMIT_DIR:-$(dirname "$0")/..}/finetune/cluster_env.sh"
 
 # Policy: /tmp on a compute node is not persistent and NSight's global lock
 # lives there; the cluster guide points TMPDIR at the node-local RAID.
