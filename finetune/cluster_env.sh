@@ -59,3 +59,11 @@ echo "DVIT_WORK=$DVIT_WORK"
 echo "HF_HOME=$HF_HOME"
 echo "partition=$DVIT_PARTITION  gpus/node=$DVIT_GPUS_PER_NODE"
 
+
+# Enroot needs XDG_RUNTIME_DIR, which Slurm steps don't get on this cluster.
+export XDG_RUNTIME_DIR="/tmp/xdg-$(id -u)"
+export ENROOT_RUNTIME_PATH="/tmp/enroot-$(id -u)/run"
+export ENROOT_CACHE_PATH="/local/enroot-$(id -u)/cache"
+export ENROOT_DATA_PATH="/local/enroot-$(id -u)/data"
+export DVIT_VENV="${DVIT_VENV:-$DVIT_SHARED/venv}"
+export DVIT_PY="${DVIT_PY:-$DVIT_VENV/bin/python}"

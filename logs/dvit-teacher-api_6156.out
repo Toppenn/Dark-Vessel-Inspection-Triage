@@ -1,0 +1,18 @@
+DVIT_SHARED=/storage/hackathon_teams/omc-team14
+DVIT_WORK=/storage/hackathon_teams/omc-team14/dvit
+HF_HOME=/storage/hackathon_teams/omc-team14/hf
+partition=hackathon  gpus/node=8
+120/120 scenes written to /storage/hackathon_teams/omc-team14/dvit/data/scenes.jsonl
+case coverage:
+  dark_large_in_mpa          174
+  dark_large_in_reserve      171
+  matched_gear_in_closure    169
+  matched_in_zone_clean      129
+  dark_small_in_reserve      129
+  near_threshold_dark        129
+  fixed_structure            127
+  dark_small_open_water      120
+  dark_large_open_water      103
+  matched_open_water         88
+  exactly_threshold_dark     39
+  10/120 scenes | 20 samples | 3.1 min
