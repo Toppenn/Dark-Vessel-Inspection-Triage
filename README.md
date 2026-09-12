@@ -1,11 +1,15 @@
 # Dark Vessel Inspection Triage
 
+**Decision support for fisheries inspection, on open models.**
+
 **NVIDIA Open Models Codefest 2026 — team submission**
 
 [![checks](https://github.com/Toppenn/Dark-Vessel-Inspection-Triage/actions/workflows/checks.yml/badge.svg)](https://github.com/Toppenn/Dark-Vessel-Inspection-Triage/actions/workflows/checks.yml)
 
 An agentic decision-support system that turns open satellite radar detections into
-prioritised, explainable inspection briefs for European fisheries control authorities.
+prioritised, explainable inspection briefs for European fisheries control authorities —
+with every figure computed by deterministic code, the prose written by open models, and a
+validator that withholds the report when the writing does not match the facts.
 
 ---
 
@@ -18,9 +22,20 @@ Research using Copernicus Sentinel-1 radar has found that a large share of fishi
 at sea are not broadcasting their positions, and that non-broadcasting vessels are more
 frequently associated with illicit activity than those that do broadcast.
 
-Inspection capacity is finite. Patrol vessels and aircraft cannot cover an entire sea
-area. The operational question is not "who is guilty" — it is **where should the next
-inspection go**.
+Detecting them is largely solved. The real problem is elsewhere, and it has two halves.
+
+**A patrol vessel cannot cover an ocean.** One radar scene can return dozens of detections
+and there are resources to inspect a few. The operational question is not who is guilty —
+it is **where should the next inspection go**.
+
+**And a dark vessel is not necessarily an offender.** Below 15 metres there is no
+obligation to broadcast at all, and even above it, Article 10(2) of Council Regulation (EC)
+No 1224/2009 permits a master to switch the AIS off where the safety of the crew is at
+imminent risk.
+
+Attaching a breach to a vessel that is complying is the worst failure a system like this
+can have. But failing to flag one that is not complying is not a lesser failure: it is the
+same failure in the other direction.
 
 ---
 
@@ -45,6 +60,39 @@ system:
    suggested action, and the innocent explanation that could account for the indicator.
 7. **Validates its own output** against the factual dossier, and refuses to issue a report
    that fails.
+
+---
+
+## Where this sits, and what it does not claim
+
+**Stated first, so the project is not oversold.** The data fusion this system sits on top
+of already exists and is deployed:
+
+- The **EFCA–EMSA** interagency service has over 500 registered fisheries control users and
+  correlates VMS, terrestrial and satellite AIS, LRIT, Vessel Detection Service radar
+  reports and Copernicus imagery.
+- Over a thousand users access **EMSA's Integrated Maritime Services**, with intensive use
+  of Automated Behaviour Monitoring algorithms. Risk-based control planning is already a
+  requirement of the Control Regulation, not an innovation.
+- **Commercial fisheries monitoring centre software** correlating SAR detections against
+  VMS tracks is deployed and on the market.
+- **Global Fishing Watch** publishes Sentinel-1 vessel detections labelled as matched or
+  unmatched to AIS. It is the source the live data path is written against.
+- Nationally, Spain's **fisheries monitoring centre** operates around the clock on the SIPE
+  systems.
+
+**This project is not** a detector, not a fusion platform, and not a risk engine competing
+with any of the above.
+
+**What it adds** sits downstream of all of it: a **written, checkable justification for each
+targeting decision**. An algorithm raises an alert; it does not produce the reasoning an
+authority needs afterwards — why this vessel and not that one, which provision is at stake,
+and what innocent explanation would account for the same observation. Today an analyst
+writes that by hand. That is not a productivity problem; it is a requirement of
+administrative law.
+
+And the hardest part to copy is not the drafting. It is the duty of caution expressed as
+executable rules, including the guarantee about what must **never be omitted**.
 
 ---
 
@@ -112,10 +160,9 @@ of the season.
 
 **And the sensor that would see an angula boat is not this one.** Angula is fished with
 cedazo from the shore or from small craft inside estuaries, far below Sentinel-1's ~15 m
-detection floor, while the detections here are 9-31 m vessels in open water. The gate
+detection floor, while the detections here are 9–31 m vessels in open water. The gate
 prioritises estuary tasking with whatever sensor is appropriate; nothing in it should be
-read as implying that an angula boat would appear in a SAR scene. That limit is written into
-the module rather than left for the framing to obscure.
+read as implying that an angula boat would appear in a SAR scene.
 
 ### The legal basis, and its limits
 
@@ -150,16 +197,13 @@ three-state rule applies, governed by a configurable `length_sigma_m`. **The sig
 in the configuration is a placeholder**; calibrating it against the published detection
 literature is an immediate task, not a finished one.
 
-
 **A degraded indicator may corroborate a candidacy; it may not create one.** When the
 estimate does not clear the threshold once its own uncertainty is applied, the resulting
 indicator says so in its own text — and a record carrying only that is recorded, not
 actioned. Without the rule, a 14 m estimate against a 15 m threshold with ±2 m of sensor
 error would put a vessel on the patrol route on the strength of an indicator reading
 "inconclusive", and would create a cliff between 13 m and 14 m on a measurement that cannot
-resolve the difference. This is a consequence we introduced ourselves when classification
-moved from points to indicator counts: the score distinguished firm from degraded, and the
-new classifier initially did not.
+resolve the difference.
 
 These properties are tested, not merely documented — see `src/test_caution.py`.
 
@@ -195,6 +239,9 @@ Briefs are written in the working language of the authority that will act on the
 language, and an open model running locally can serve languages a vendor API may not
 prioritise. The validator's guardrail patterns are multilingual for the same reason.
 
+**Why a language model at all** — including the honest case for a template baseline, and
+what would settle it — is set out in [docs/WHY_AN_LLM.md](docs/WHY_AN_LLM.md).
+
 ---
 
 ## Output validation
@@ -217,25 +264,25 @@ The validator checks, for both the analyst and the writer:
 | An indicator written as a category label ("ais", "zone") rather than a statement | blocker |
 | Brief indicators citing none of the record's zone identifiers, figures or legal references | blocker |
 | A brief listing more indicators than the record contains (invention by addition) | blocker |
-| A regulation field restating the indicators instead of naming the provision | warning |
 | A brief stating a priority the engine did not assign (a high written up as low) | blocker |
 | A regulation carrying anchors that belong exclusively to a different detection | blocker |
 | A brief raising indicators with no caveat at all | blocker |
 | A caveat describing a vessel as under the carriage threshold when the record exceeds it | blocker |
 | A suggested action invoking seizure or arrest, beyond an inspector's authority | blocker |
+| An analyst reason citing figures or zones that do not appear in its own record | blocker |
+| A regulation field restating the indicators instead of naming the provision | warning |
 | A narrative claim listing a record among a priority class it does not belong to | warning |
 | A record with indicators but no regulation named, including an empty field | warning |
 | A suggested action that is only context ("40.77 km from base") with no instruction left | warning |
-| A medium-priority record with no brief | warning |
-| A medium-priority record the analyst left out of its prioritisation | warning |
-| An analyst reason citing figures or zones that do not appear in its own record | blocker |
+| A medium-priority record with no brief, or left out of the prioritisation | warning |
 
 Each rule exists because a model produced that failure in a real run. Position tolerance is
 0.001° (~110 m): the model copies a coordinate rather than computing one, so the tolerance
-absorbs formatting rounding and nothing else. **Indicator fidelity is bounded in both directions, in every language.** The anchor check
+absorbs formatting rounding and nothing else.
+
+**Indicator fidelity is bounded in both directions, in every language.** The anchor check
 compares tokens that translation leaves untouched — zone identifiers, figures and legal
-references — so it runs whatever the authority's working language is. Word overlap remains a
-secondary signal, but only where brief and dossier share a language.
+references — so it runs whatever the authority's working language is.
 
 Anchors bound *substitution*: a brief that replaces the record's content carries none of
 them. They do not bound *addition* — a brief that reproduces every indicator faithfully and
@@ -243,13 +290,6 @@ appends an invented one keeps every anchor and passes. Addition is the likelier 
 because models embellish more readily than they replace, and in an inspection brief an added
 line is an accusation nobody observed. So the count is bounded too: a brief may consolidate
 two indicators into one well-formed statement, but never list more than the record contains.
-Both are blockers, because fabricated text sits in the field an inspector reads first.
-
-Making the zone identifier part of every zone indicator is what made the anchor check
-possible in any language, and it makes the indicator more precise for the inspector at the
-same time. Anchors also accept either decimal separator, because the engine writes `15.0`
-and a Spanish brief writes `15,0`: punctuation convention is not a fidelity failure, and
-matching only the dot would have blocked faithful translations.
 
 Two of these rules exist because the guardrail was probed rather than trusted. A brief could
 state a priority the engine never assigned — a high-priority record written up as "low",
@@ -259,25 +299,66 @@ shared anchors is not enough: the threshold figure appears in every AIS citation
 of them always intersect. What identifies misattribution is an anchor belonging *exclusively*
 to another detection.
 
-**Previously known blind spots, now resolved.** In earlier versions, three constructions could pass that a reader would call wrong: a brief with no caveat, a caveat that contradicted its own record, and a suggested action that exceeded the system's remit. These are now strictly blocked by three new deterministic guardrails:
+**The validator has been wrong three times, and each is now a regression test.** Two rules
+once passed a report that was visibly flawed: an empty `regulation` field slipped through a
+check that looked only for the words "none identified", and a misattributed priority claim
+written without parentheses slipped through a pattern that required them. The third failed
+the other way — it flagged all seven briefs in a correct report, because it matched any
+action *starting* with a distance, and the model had written "38.0 km from base: board and
+verify gear", a perfectly actionable line with the range in front. A guardrail that has
+never been checked against both a failure it should catch and a legitimate case it should
+not is an assumption, not a guarantee.
 
-- **Mandatory Context Caveats (Rule A):** a brief that raises indicators must carry a
-  caveat. The caveat is not a disclaimer; it is the counter-hypothesis the inspector has to
-  rule out, and a brief that offers none is unbalanced by omission.
-- **Factual Length Consistency (Rule B):** cross-references the record's length against
-  the caveat. A vessel at or above the carriage threshold cannot be described as falling
-  below it, because that invites an inspector to dismiss a live indicator. The threshold is
-  read from the dossier rather than written into the rule, so it follows a jurisdiction that
-  sets its own.
-- **Authority Scope Limitation (Rule C):** the system proposes inspection; it does not
-  order seizure. An action invoking *seize*, *confiscate*, *arrest* or *impound* — in either
-  working language — exceeds what an inspector may do and is blocked.
+---
 
-Two others were closed only after a real run exposed them: the analyst stated a length of 19 m for a 55 m
-vessel and passed clean, because nothing compared its prose against the record; and anchors
-were being lost to non-breaking hyphens, since the model writes `RES‑03` as readily as
-`RES-03`. Both are now normalised and checked. The engine itself is unaffected: 20,000
-randomised detections against the declared invariants produce no violation.
+## Evaluation: measuring the checker, not the model
+
+The system's thesis is that the guarantees live in code rather than in the prompt. That
+claim is testable directly, and it is tested in two layers.
+
+### Layer 1 — the red team, on one scene
+
+`src/eval_agent.py` synthesises a correct analyst prioritisation and writer report from a
+real dossier, mutates each into one concrete LLM failure mode — a hallucinated id, a moved
+coordinate, an AIS accusation against a broadcasting vessel, a dropped high-priority target,
+a fabricated indicator — and asserts the validator returns the expected severity. It
+includes negative controls: legitimate-but-unusual outputs the guardrail must **not** block,
+so over-blocking is measured alongside under-blocking. No API key, no network, no cost.
+
+### Layer 2 — the same red team, over hundreds of independently generated worlds
+
+A rule that holds only because of an accident of the demo scene's geometry would pass
+layer 1. `finetune/scene_factory.py` samples complete scenes — geography, zone sets, closure
+states, gear restrictions, patrol bases, working languages and length distributions — and
+`finetune/harness_over_scenes.py` re-runs the entire red team over every one of them.
+
+Most recent run, 200 generated scenes:
+
+| | |
+|---|---|
+| Scenes exercised | **177** (23 could not host every mutation and are excluded, not counted as passes) |
+| Cases on expected severity | **2,374 / 2,374** |
+| Guardrail catch rate on adversarial cases | **1,843 / 1,843** |
+| Negative controls not blocked | **531 / 531** |
+
+Per failure family, all at 100%: `ais-misattribution` 99/99, `coordinate` 177/177,
+`fabrication` 680/680, `hallucination` 177/177, `over-report` 356/356, `under-report`
+354/354.
+
+Reproduce in about a minute, with no GPU and no API key:
+
+```bash
+python finetune/scene_factory.py --n 200 --out data/scenes.jsonl
+python finetune/harness_over_scenes.py --scenes data/scenes.jsonl
+```
+
+### What this does and does not show
+
+It shows the guardrail generalises past the scene it was written against. It does **not**
+show the guardrail is complete: it catches the failure modes we thought to encode. The
+open problem — evaluating agentic output where there is no ground truth, and specifically
+catching *addition* rather than *contradiction* — is the hardest item on the roadmap and
+the one that most needs outside input.
 
 ---
 
@@ -290,7 +371,7 @@ Detections analysed: 13
 AIS carriage threshold applied: 15.0 m (length uncertainty +/-2.0 m)
 Environmental context (waxing crescent): angula suitability OUT_OF_SEASON
   outside the angula campaign window (10-10 to 03-31): the fishery is closed, so
-  lunar conditions do not raise scanning priority. Moon figures reported as computed.
+  lunar conditions do not raise scanning priority.
 
 Classification summary:
   high_priority      3     medium_priority    4     fixed_structure    1
@@ -320,28 +401,23 @@ Classification summary:
 its AIS indicator is suppressed and the suppression is stated — but it is still a candidate,
 because it is apparently fishing inside a reserve where all gear is prohibited. The duty of
 caution removes one piece of evidence, not the vessel. **D-013** is a charted platform, not a
-boat. **D-004** carries two independent indicators, which is what makes it high priority: the
-classification counts concurring indicators rather than summing weights.
+boat. **D-004** carries two independent indicators, which is what makes it high priority.
 
-Full output of all three stages — deterministic engine, analyst agent, writer agent and
-validation — is in [docs/SAMPLE_OUTPUT.md](docs/SAMPLE_OUTPUT.md).
+Full output of all three stages is in [docs/SAMPLE_OUTPUT.md](docs/SAMPLE_OUTPUT.md).
 
 ---
-
 
 ## Model selection
 
 We ran the identical pipeline across the Nemotron 3 family rather than assuming the largest
-model is the right one.
+model is the right one. Each agent can run on a different model via `ANALYST_MODEL` and
+`WRITER_MODEL`, so reasoning-heavy and formatting-heavy steps can be sized independently.
 
 | Model | Behaviour observed |
 |---|---|
-| `nemotron-3-nano-30b-a3b` | **Failed to complete the writer task.** On the full dossier it collapsed into a degenerate repetition loop, emitting 49 KB of a single repeated sentence without ever opening an object. This is a capability limit, not a formatting one, and no retry recovers it. The agent layer now detects the loop and says so explicitly. |
-| `nemotron-3-super-120b-a12b` | Completes both agent roles reliably, keeps the suppression rule intact in its narrative, and restates indicator text faithfully. **Current default.** |
-| `nemotron-3-ultra-550b-a55b` | Largest; evaluated for the final demo where latency is not a constraint. |
-
-Each agent can run on a different model via `ANALYST_MODEL` and `WRITER_MODEL`, so
-reasoning-heavy and formatting-heavy steps can be sized independently.
+| `nvidia/nemotron-nano-3-30b-a3b` | **Failed to complete the writer task.** On the full dossier it collapsed into a degenerate repetition loop, emitting 49 KB of a single repeated sentence without ever opening an object. This is a capability limit, not a formatting one, and no retry recovers it. The agent layer detects the loop and says so explicitly. Closing this gap is the Codefest work below. |
+| `nvidia/nemotron-3-super-120b-a12b` | Completes both agent roles reliably, keeps the suppression rule intact in its narrative, and restates indicator text faithfully. **Current default.** |
+| `nvidia/nemotron-3-ultra-550b-a55b` | Largest; evaluated for the final demo where latency is not a constraint. |
 
 **Observed failure modes, and what we did about them.** In one run the writer copied the
 analyst's shorthand category labels into the briefs, so an inspector would have received
@@ -351,56 +427,113 @@ broadcasting. We did not respond by writing a longer prompt: each of those failu
 deterministic rule in `validate.py` with a test that reproduces it. **Guardrails here are not
 prompt hygiene; they are the product.**
 
-**A guardrail that rejects real data is worse than the fabrication it catches.** The check on
-the analyst's prose compared its figures against the record's indicators and length only —
-so when the analyst correctly wrote "44.02 km from base", quoting a distance the dossier
-itself computes, four reports were blocked outright. The comparison now covers every figure
-the dossier legitimately holds for a record: length, distance, position, score, and its zone
-identifiers. The fabricated-length case it was written for is still caught.
-
 **Asking again beats warning about it.** The analyst's recurring failure is truncation, not
-invention: it ranks the obvious candidates and stops, dropping one to three medium-priority
-records. The validator reports that, but a warning on a report nobody re-runs is worse than
-asking again — so `prioritise` retries once with the dropped ids fed back, the same shape
-`_complete_json` already uses for a malformed response. The retry is kept only if it covers
-more ground than the first answer, so a second truncation cannot replace a better one. The
-prompt also states the candidate count and that ranking is not selection: a low rank says a
-record comes later, while omission says nothing about it at all.
-
-**The validator has been wrong three times, and each is now a regression test.** Two rules
-once passed a report that was visibly flawed: an empty `regulation` field slipped through a
-check that looked only for the words "none identified", and a misattributed priority claim
-written without parentheses slipped through a pattern that required them. The third failed
-the other way — it flagged all seven briefs in a correct report, because it matched any
-action *starting* with a distance, and the model had written "38.0 km from base: board and
-verify gear", a perfectly actionable line with the range in front. The rule now asks whether
-an instruction remains once the distance is set aside. A guardrail that has never been
-checked against both a failure it should catch and a legitimate case it should not is an
-assumption, not a guarantee.
-
-
+invention: it ranks the obvious candidates and stops. So `prioritise` retries once with the
+dropped ids fed back, and the retry is kept only if it covers more ground than the first
+answer.
 
 **Classification counts indicators; it does not total points.** Two or more independent
 indicators concurring makes a record high priority, one makes it medium, none makes it
-neither. The weights survive only to order records *within* a class.
-
-That change came out of a bug. A corroboration item was awarding points for the activity
-classifier even where an indicator already rested on it — one observation counted twice —
-and removing the double count moved a record across the high-priority boundary. A threshold
-that shifts when a double count is removed was measuring the double count. Counting
-concurring indicators is also the claim the output already makes to its reader, so the
-number shown and the classification given are now the same fact.
-
-The weights remain uncalibrated against enforcement outcomes and are never presented as a
-probability of infringement. The engine enforces the invariant that a record scores above
-zero if and only if it has at least one indicator.
+neither. That change came out of a bug: a corroboration item was awarding points for the
+activity classifier even where an indicator already rested on it — one observation counted
+twice — and removing the double count moved a record across the high-priority boundary. A
+threshold that shifts when a double count is removed was measuring the double count.
 
 **An open question we have not resolved.** Radar-inferred *gear* is treated as context and
 scores nothing, because it is an inference rather than an observation. Radar-inferred
 *length* near the threshold does produce an indicator that cites a legal provision. Both
 come from the same sensor. There is an argument for the asymmetry — length is a continuous
-quantity with a bounded, quantifiable uncertainty, while gear is a categorical guess with
-no equivalent band — but we would rather flag it as unresolved than defend it as settled.
+quantity with a bounded, quantifiable uncertainty, while gear is a categorical guess with no
+equivalent band — but we would rather flag it as unresolved than defend it as settled.
+
+---
+
+## Codefest work: closing the small-model gap
+
+*Directory: [`finetune/`](finetune/). Full runbook in [finetune/README.md](finetune/README.md).*
+
+The 30B model fails where the 120B model succeeds. That sentence is a problem for the
+product, not just for a benchmark: the whole public-sector argument is that the system runs
+inside the authority's own environment, and a 120B model is a much harder thing for a
+regional inspection service to host than a 30B model with 3.5B active parameters. The goal
+is to replace *"we use the large one because the small one fails"* with **"we fixed the
+small one"**, and to have a number behind it.
+
+### The pipeline
+
+```
+scene_factory.py       facts, sampled deterministically      (CPU, seconds)
+   |                   -> src/analysis.py computes the dossier
+   v
+gen_teacher.py         Super-120B writes briefs;             (CPU, API-bound)
+   |                   validate.py accepts or rejects each one
+   v
+curate.py              dedup, length filter, leak-free split (CPU, seconds)
+   |
+   v
+nano_writer_lora.yaml  LoRA SFT of Nano-30B-A3B              (1 GPU)
+   |
+   v
+eval_live.py           held-out scenes, base vs adapter      (1 GPU or API)
+```
+
+### The load-bearing idea: the validator is the data curator
+
+A teacher output enters the training corpus only if the same executable rules that gate a
+real report find no issue in it. The failure modes we are trying to remove from the small
+model — citing the AIS carriage requirement against a broadcasting vessel, moving a
+coordinate, dropping a high-priority record — therefore **cannot be present in its
+supervision**, because those are precisely what `validate.py` blocks.
+
+The teacher's rejection rate is a result in itself: a measurement of the problem the
+guardrail exists to solve, taken on real model output rather than on mutations.
+
+### Where synthetic data is used, and where it is deliberately not
+
+The training *inputs* are dossiers, and a dossier is ground truth by construction: every
+figure in it was computed by `src/analysis.py`. If a language model invented the dossier,
+the supervision signal would inherit the model's errors and the project's governing rule —
+*facts are computed, models interpret* — would be false at training time as well as at
+inference time.
+
+So the facts are sampled deterministically by `scene_factory.py`, from named case templates
+chosen so that the edges the duty of caution lives on are guaranteed to appear: vessels at
+exactly 15.0 m, vessels in the inconclusive band, sub-threshold vessels inside reserves,
+broadcasting vessels with prohibited gear in an active closure, detections coinciding with
+charted structures.
+
+[NeMo Data Designer](https://github.com/NVIDIA-NeMo/DataDesigner) is used for the
+**surface** only — place names, designations, closure reasons, port names, working language
+— everything that must vary so the model learns the structure of an indicator rather than
+the string "Islote Sur", and nothing that must not.
+[NeMo Curator](https://github.com/NVIDIA-NeMo/Curator) was evaluated and its dedup stages
+map cleanly onto what `curate.py` does; the reasoning for implementing them in the standard
+library at this corpus size is in [finetune/CURATOR.md](finetune/CURATOR.md).
+
+### Training
+
+[NeMo AutoModel](https://github.com/NVIDIA-NeMo/Automodel) LoRA SFT, following NVIDIA's own
+recipe for this model. Two details are not optional:
+
+- `exclude_modules: ["*.out_proj"]` — the Mamba-2 layers of the hybrid architecture consume
+  `out_proj.weight` inside a custom kernel where LoRA cannot apply.
+- `mask_generation_prompt: true` — Nemotron's chat template injects an empty reasoning block
+  into every assistant turn without `reasoning_content`. Training with loss on that block
+  teaches the model to open its reasoning and immediately close it, and the failure being
+  fixed *is* a degenerate reasoning loop.
+
+### Reported honestly
+
+This is distillation, and it is labelled as such: the small model is taught to imitate a
+large model's validated output on synthetic scenes. It is not evidence that the small model
+reasons better, and it says nothing about real Global Fishing Watch data.
+
+The corpus is filtered by the validator and the evaluation uses the same validator, which is
+close to training on the test metric. The mitigation is a held-out scene set generated from
+a disjoint seed range, so an adapter is never evaluated on a scene it was trained on. The
+honest claim is narrow: *the fine-tune raises the rate at which the small model produces
+output the guardrail accepts, on scenes it has not seen.* Whether the guardrail is **right**
+is a separate question, measured separately, by the multi-scene harness above.
 
 ---
 
@@ -408,9 +541,17 @@ no equivalent band — but we would rather flag it as unresolved than defend it 
 
 Working end-to-end prototype: deterministic engine, two agents on open Nemotron models, and
 a deterministic validator, with 79 checks that run without an API key or network access.
-76 of them need no dependencies at all; the remaining three exercise the analyst-omission
-helper and so require the OpenAI SDK.
-`pyright` reports zero errors across `src/` and `scaffolding/`. Demo data is synthetic.
+76 of them need no dependencies at all. `pyright` reports zero errors across `src/` and
+`scaffolding/`. Demo data is synthetic.
+
+| | |
+|---|---|
+| Executable checks | **79/79** — 76 run with no dependencies at all |
+| Red team, demo scene | **15/15** cases, **12/12** guardrail catch rate |
+| Red team, 177 generated scenes | **2,374/2,374** cases, **1,843/1,843** guardrail catch rate |
+| Deterministic path | ~1 ms per 13-detection scene |
+| Continuous integration | 2 jobs on every push: one with dependencies, one with none |
+| No API key, no network | all of the above runs on a laptop |
 
 **What the real source does and does not provide.** Global Fishing Watch publishes, per SAR
 detection, an estimated length, AIS matching status and model scores. It does not publish
@@ -430,28 +571,50 @@ live means replacing `src/data.py` **and** dropping the fields the demo enriches
 | Charted fixed structures | National hydrographic charts / offshore infrastructure registries |
 | Angula campaign window | The order published by the relevant autonomous community |
 
+### Declared as outstanding
+
+The repository does not dress up its ceilings:
+
+- **`length_sigma_m` (2.0 m)** is a placeholder, pending calibration against real detection
+  literature.
+- **The scoring weights** are uncalibrated and are never presented as a probability of
+  infringement.
+- **Demo data is synthetic**, with a schema mirroring the real sources so that going live
+  means replacing a single module.
+- **The angula campaign window** is a per-jurisdiction default, not a universal legal fact.
+- **The legal instrument in the EU is VMS, not AIS**, and it is confidential: shared only
+  under agreement with the national administration. Without it the system reasons from AIS
+  and loses part of the case. This points at integration inside the authority's environment
+  rather than a rival platform.
+- **Sentinel-1 revisit** is measured in days, and the small-scale fleet below 15 m largely
+  falls under the sensor's detection floor.
+- **A SAR detection identifies nobody.** It is an indication for directing a patrol, never
+  evidence. All output is framed as resource allocation.
+- **Classification under the EU AI Act is unresolved.** Use by a control authority may bring
+  it within the high-risk provisions. That is a question for legal advice; the deterministic
+  validator and the retained run record help either way.
+- **Nobody who would use this has been spoken to yet.** It is the project's largest gap, and
+  no amount of compute closes it.
+
 ### Roadmap
+
 - **Phase 1 (done):** deterministic cross-reference, two-agent pipeline, output validator,
-  patrol sequencing, the fixed-infrastructure guard, and the environmental gate
-  (`src/environment.py`) — season, moon phase and spring/neap tendency as a
-  *scanning-priority* signal that never touches a vessel score. High-water timing is left as
-  a real-data plug-in point, not faked.
-- **Phase 2 (in progress):** a SAR vessel detector (`scaffolding/vision.py`) — CA-CFAR with a
-  Lee speckle filter, numpy-only, deterministic and auditable. It turns a Sentinel-1
-  intensity chip into detections (position, coarse length, confidence) that feed the
-  AIS-matching stage. A fine-tuned CNN served via TensorRT/NIM slots into the same
-  `detect_vessels` seam once weights exist — there is no fake YOLO standing in for it. Still
-  ahead: real Global Fishing Watch data; real Natura 2000 polygons via shapely (the
-  dependency-free ray casting cannot handle holes and multipolygons); multimodal chip
-  reasoning with `nemotron-3-nano-omni-30b-a3b-reasoning`; self-hosted NIM on OCI so
-  operational data stays inside the authority's environment.
-- **Phase 3:** calibrate the length-uncertainty sigma against the detection literature and
-  the angula season window against the campaign published for the jurisdiction; an evaluation
-  harness measuring precision against known enforcement outcomes; recurring closures that
-  cross a calendar year; domain fine-tuning with LoRA.
+  patrol sequencing, the fixed-infrastructure guard, and the environmental gate.
+- **Phase 2 (in progress):** a SAR vessel detector (`scaffolding/vision.py`) — CA-CFAR with
+  a Lee speckle filter, numpy-only, deterministic and auditable. Still ahead: real Global
+  Fishing Watch data; real Natura 2000 polygons via shapely; multimodal chip reasoning with
+  `nemotron-3-nano-omni-30b-a3b-reasoning`; self-hosted NIM so operational data stays inside
+  the authority's environment.
+- **Phase 3 (Codefest):** LoRA fine-tune of Nemotron-3-Nano so the small model can run the
+  writer role; multi-scene evaluation of the guardrail; calibration of the two placeholders;
+  an evaluation harness measuring precision against known enforcement outcomes.
+- **Open problem, and the one that most needs mentorship:** evaluating agentic output
+  without clean ground truth. Deterministic rules catch **contradiction** (the model writes
+  19 m where the record says 55). They do not catch **addition**: the model keeps every
+  figure correct and appends a claim that sounds reasonable and that no fact supports.
 
 `docs/CLOSING_REPORT.md` carries the phase-by-phase status, the verification table and the
-deliberate ceilings — what does not run here, and why it is not pretended to.
+deliberate ceilings.
 
 ---
 
@@ -460,42 +623,38 @@ deliberate ceilings — what does not run here, and why it is not pretended to.
 ```bash
 # 1. Deterministic engine only — no dependencies, no API key
 python src/test_caution.py     # 76 of 79 checks; the rest need the SDK
-python src/eval_agent.py       # red-team harness, no dependencies
+python src/eval_agent.py       # red-team harness on the demo scene
 python src/main.py --cross-reference-only
 
-# 2. Full pipeline
+# 2. The multi-scene red team — still no key, no network, no GPU
+python finetune/scene_factory.py --n 200 --out data/scenes.jsonl
+python finetune/harness_over_scenes.py --scenes data/scenes.jsonl
+
+# 3. Full pipeline
 pip install -r requirements.txt
 export NVIDIA_API_KEY='nvapi-...'        # Windows: $env:NVIDIA_API_KEY = 'nvapi-...'
 python src/main.py
 
-# 3. Choose models per agent
+# 4. Choose models per agent
 export ANALYST_MODEL='nvidia/nemotron-3-super-120b-a12b'
 export WRITER_MODEL='nvidia/nemotron-3-super-120b-a12b'
-
-# 4. Checks — no API key, no network
-python src/test_caution.py     # 79 checks: caution, invariants, validator rules
-python src/eval_agent.py       # red-teams the guardrail with real LLM failure modes
-python src/environment.py      # season gate, year-crossing window, error policy
 
 # 5. Live Global Fishing Watch SAR detections (falls back to demo without a token)
 export GFW_TOKEN='...'                    # from globalfishingwatch.org/our-apis
 python src/main.py --source gfw
 
 # --- scaffolding: built and self-checking, outside the demo path ---
-
 python scaffolding/vision.py              # CA-CFAR on a synthetic Sentinel-1 chip
-python scaffolding/latency.py             # where the time goes; --model-repeat N to bill
+python scaffolding/latency.py             # where the time goes
 streamlit run scaffolding/app.py          # officer triage view (needs streamlit)
-
-# Phase 1.2 / 2.1: curation and the training scaffold. Data prep runs on CPU;
-# --train needs a GPU and requirements-train.txt.
-python scaffolding/curation.py --synthetic 8 --out datasets/sar_vessels
-python scaffolding/train_detector.py --data datasets/sar_vessels --dry-run
 ```
 
 Get an API key at [build.nvidia.com](https://build.nvidia.com). One key works for every
 model — the model is chosen per request, not per key.
 `python src/list_models.py nemotron` lists the models available to your key.
+
+For the fine-tuning pipeline on an HPC cluster, see
+[finetune/README.md](finetune/README.md).
 
 ---
 
@@ -511,48 +670,74 @@ src/                 the engine and the demo path
   data.py            data loading — the boundary that changes to go live
   main.py            orchestrator
   test_caution.py    79 checks: duty of caution, invariants, validator rules
-  eval_agent.py      Phase 4.1 red-team harness: guardrail catch rate
-  validate_structure.py  structural check on the analyst response, before the factual ones
+  eval_agent.py      red-team harness: guardrail catch rate on the demo scene
+  validate_structure.py  structural check on the analyst response
   list_models.py     helper: list the models available to your API key
 
+finetune/            Codefest: closing the small-model gap
+  scene_factory.py   synthetic scenes — facts sampled, never model-generated
+  surface_vocab.py   NeMo Data Designer config for names and languages
+  gen_teacher.py     teacher generation, gated by validate.py
+  curate.py          dedup, length filter, coverage report, leak-free split
+  harness_over_scenes.py   the existing red team, over hundreds of worlds
+  eval_live.py       live-model measurement: the model, not the guardrail
+  nano_writer_lora.yaml    NeMo AutoModel LoRA recipe (8-GPU and 1-GPU variants)
+  preflight_dataset.py     load the corpus as the trainer will, before the job
+  sbatch_*.sh        Slurm jobs for each stage
+  cluster_env.sh     every cluster-specific value, in one place
+  CLUSTER_NOTES.md   what we learned about the Codefest cluster, the hard way
+  CURATOR.md         where NeMo Curator fits, and why not yet
+
 scaffolding/         built, self-checking, NOT exercised by the demo path
-  vision.py          SAR vessel detector (CA-CFAR) — the Step-3 detector
-  curation.py        Phase 1.2: CFAR auto-candidate YOLO labels for human review
-  train_detector.py  Phase 2.1: validate/split/data.yaml, TensorRT export seam
-  latency.py         Phase 4.2: per-stage latency breakdown
-  app.py             Phase 5.1: Streamlit triage view for an officer
-  README.md          what is here, why it is separate, how to run it
+  vision.py          SAR vessel detector (CA-CFAR)
+  curation.py        CFAR auto-candidate YOLO labels for human review
+  train_detector.py  validate/split/data.yaml, TensorRT export seam
+  latency.py         per-stage latency breakdown
+  app.py             Streamlit triage view for an officer
 
 demo_data/           synthetic demo data, schema mirroring the real sources
-docs/SAMPLE_OUTPUT.md    full unedited output of all three stages of the demo path
-docs/PROMPTS.md      the analyst and writer prompts, rule by rule, and what backs each
-docs/CLOSING_REPORT.md   phase-by-phase status, verification table, deliberate ceilings
+docs/SAMPLE_OUTPUT.md    full unedited output of all three stages
+docs/WHY_AN_LLM.md       the case for and against the model, and what would settle it
+docs/PROMPTS.md          the analyst and writer prompts, rule by rule
+docs/CLOSING_REPORT.md   phase-by-phase status, verification table, ceilings
 docs/DEPLOY_NIM_OCI.md   running a self-hosted Nemotron NIM on an OCI GPU shape
-pyrightconfig.json   type-check config; optional deps declared, tree stays clean
 ```
 
 `src/` and `scaffolding/` are separated so the demo path is visible in the tree rather than
-asserted in a document: nothing in `src/` imports anything from `scaffolding/`. Both are
-type-checked, and `pyright` reports zero errors across the two.
+asserted in a document: nothing in `src/` imports anything from `scaffolding/`.
 
 ---
 
 ## Target users
 
 The European Fisheries Control Agency (headquartered in Vigo, Spain) and national and
-regional fisheries inspection services.
+regional fisheries inspection services. Because the design is open and self-hostable, the
+system can run inside the authority's own environment and its reasoning can be audited:
+neither is optional when the output feeds a decision with enforcement consequences.
+
+---
+
+## Beyond fisheries
+
+Nothing about the guardrail is specific to fishing. The pattern is that a language model
+writes prose feeding a decision with legal consequences, so the guarantees have to live in
+executable code rather than in a prompt — including the guarantee about what must never be
+omitted. Customs. Tax. Environmental permitting. Benefits fraud. Anywhere an approximate
+answer can attach a legal breach to someone who is complying.
+
+Not claimed today. Fisheries is where it gets proven.
 
 ---
 
 ## Team
 
-Four undergraduate students in Spain. Work was divided across agent orchestration,
-geospatial and regulatory data, model serving, and product and evaluation; commits were
-made from a shared setup, so the git history does not map one-to-one onto contributors.
+Four undergraduate students in Spain (Universidad Carlos III de Madrid and Universidad
+Complutense). Work was divided across agent orchestration, geospatial and regulatory data,
+model serving, and product and evaluation; commits were made from a shared setup, so the git
+history does not map one-to-one onto contributors.
 
 - Jorge Rodríguez Fernández
 - Shengyu Chen
-- Pablo Vergés
 - Arsenii Samokhin
 
 ## License
@@ -563,7 +748,3 @@ MIT — see `LICENSE`.
 
 All planned data sources are open public data. Model weights are open and used under their
 respective licenses; see the model card on build.nvidia.com.
-
-## Attribution
-
-Vessel detection data provided by Global Fishing Watch (globalfishingwatch.org).
